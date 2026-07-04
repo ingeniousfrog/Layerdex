@@ -26,7 +26,7 @@ export async function loadHuggingFacePackage(input) {
   const siblings = Array.isArray(model.siblings) ? model.siblings : [];
   const metadataFiles = siblings.map((sibling) => ({
     path: sibling.rfilename,
-    size: Number.isFinite(sibling.size) ? sibling.size : 0
+    size: fileSizeFromSibling(sibling)
   }));
   const enrichedFiles = await Promise.all(
     metadataFiles.map(async (file) => {
@@ -39,7 +39,15 @@ export async function loadHuggingFacePackage(input) {
   );
 
   return {
-    source: { type: "hugging-face", label: repo },
+    source: {
+      type: "hugging-face",
+      label: repo,
+      metadata: {
+        cardData: model.cardData,
+        safetensors: model.safetensors,
+        usedStorage: model.usedStorage
+      }
+    },
     files: [
       ...enrichedFiles,
       {
@@ -49,6 +57,16 @@ export async function loadHuggingFacePackage(input) {
       }
     ]
   };
+}
+
+function fileSizeFromSibling(sibling) {
+  if (Number.isFinite(sibling.size)) {
+    return sibling.size;
+  }
+  if (Number.isFinite(sibling.lfs?.size)) {
+    return sibling.lfs.size;
+  }
+  return 0;
 }
 
 async function materializeBrowserFile(file) {

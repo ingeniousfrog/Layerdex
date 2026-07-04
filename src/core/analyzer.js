@@ -1,3 +1,4 @@
+import { buildArchitectureDiagram } from "./diagram.js";
 import { readGgufFile } from "./gguf.js";
 import { readSafetensorsFile } from "./safetensors.js";
 import { readSafetensorsIndexes } from "./safetensors-index.js";
@@ -106,6 +107,31 @@ export function analyzeModelPackage(modelPackage) {
         })
       ]
     : [];
+  const hfParameterSummary = huggingFaceParameterSummary(normalized.source);
+  const huggingFaceFacts = [
+    ...(hfParameterSummary.total > 0
+      ? [
+          fact({
+            key: "hf_safetensors_parameters",
+            label: "Hugging Face parameters",
+            source: "huggingface",
+            status: "verified",
+            value: hfParameterSummary.total
+          })
+        ]
+      : []),
+    ...(Number.isFinite(normalized.source.metadata.usedStorage)
+      ? [
+          fact({
+            key: "hf_used_storage",
+            label: "Hugging Face storage",
+            source: "huggingface",
+            status: "verified",
+            value: normalized.source.metadata.usedStorage
+          })
+        ]
+      : [])
+  ];
   const ggufFacts = ggufReadouts.flatMap((readout) => [
     ...(readout.version
       ? [
@@ -148,6 +174,7 @@ export function analyzeModelPackage(modelPackage) {
     ...indexFacts,
     ...quantizationFacts,
     ...adapterFacts,
+    ...huggingFaceFacts,
     ...ggufFacts,
     ...parseWarningFacts,
     fact({
@@ -159,10 +186,11 @@ export function analyzeModelPackage(modelPackage) {
       evidence: anatomy.evidence
     })
   ];
-  const storage = buildStorage(normalized.files, quantization, indexReadout, ggufReadouts, adapter);
-  const weights = buildWeights(tensorEntries);
+  const storage = buildStorage(normalized.files, quantization, indexReadout, ggufReadouts, adapter, normalized.source);
+  const weights = buildWeights(tensorEntries, normalized.source);
   const structure = buildStructure(anatomy, configEntries, weights, adapter);
   const dataflow = buildDataflow(anatomy, adapter);
+  const diagram = buildArchitectureDiagram(anatomy, structure, dataflow, configEntries, weights, storage);
 
   return {
     id: stableId(normalized.source.label, normalized.files),
@@ -172,13 +200,14 @@ export function analyzeModelPackage(modelPackage) {
       deploymentEstimate: estimateDeployment(storage, weights, quantization),
       displayName: normalized.source.label,
       modality: anatomy.modality,
-      precision: inferPrecision(configEntries, tensorEntries, quantization),
+      precision: inferPrecision(configEntries, tensorEntries, quantization, normalized.source),
       totalBytes: storage.totalBytes,
       totalParameters: weights.totalParameters
     },
     facts: allFacts,
     structure,
     dataflow,
+    diagram,
     weights,
     storage,
     views: [
@@ -243,7 +272,8 @@ function validateModelPackage(modelPackage) {
   return {
     source: {
       type: modelPackage.source?.type || "local-directory",
-      label: modelPackage.source?.label || "Untitled model"
+      label: modelPackage.source?.label || "Untitled model",
+      metadata: modelPackage.source?.metadata || {}
     },
     files: modelPackage.files
       .map((file) => {
@@ -429,7 +459,7 @@ function inferAnatomy(files, configEntries, tensorEntries, quantization, adapter
   };
 }
 
-function buildStorage(files, quantization, indexReadout, ggufReadouts, adapter) {
+function buildStorage(files, quantization, indexReadout, ggufReadouts, adapter, source) {
   const formats = files.reduce(
     (accumulator, file) => ({
       ...accumulator,
@@ -441,8 +471,14 @@ function buildStorage(files, quantization, indexReadout, ggufReadouts, adapter) 
     {}
   );
 
+  const fileTotalBytes = files.reduce((total, file) => total + file.size, 0);
+  const sourceTotalBytes = Number.isFinite(source.metadata.usedStorage)
+    ? source.metadata.usedStorage
+    : 0;
+
   return {
-    totalBytes: files.reduce((total, file) => total + file.size, 0),
+    totalBytes: Math.max(fileTotalBytes, sourceTotalBytes),
+    fileTotalBytes,
     files: files.map((file) => ({
       path: file.path,
       size: file.size,
@@ -457,8 +493,10 @@ function buildStorage(files, quantization, indexReadout, ggufReadouts, adapter) 
   };
 }
 
-function buildWeights(tensors) {
-  const totalParameters = tensors.reduce((total, tensor) => total + tensor.parameters, 0);
+function buildWeights(tensors, source) {
+  const tensorParameters = tensors.reduce((total, tensor) => total + tensor.parameters, 0);
+  const hfParameterSummary = huggingFaceParameterSummary(source);
+  const totalParameters = Math.max(tensorParameters, hfParameterSummary.total);
   const dtypeCounts = tensors.reduce(
     (accumulator, tensor) => ({
       ...accumulator,
@@ -485,6 +523,9 @@ function buildWeights(tensors) {
   return {
     tensors,
     totalParameters,
+    tensorParameters,
+    externalParameters: hfParameterSummary.total,
+    parameterBreakdown: hfParameterSummary.parameters,
     dtypeCounts,
     groups,
     anomalies
@@ -606,12 +647,14 @@ function buildDataflow(anatomy, adapter) {
   };
 }
 
-function inferPrecision(configEntries, tensors, quantization) {
+function inferPrecision(configEntries, tensors, quantization, source = { metadata: {} }) {
   const dtypeFromConfig = configEntries
     .map((entry) => entry.json.torch_dtype)
     .find((value) => typeof value === "string");
   const dtypeFromTensor = tensors.map((tensor) => tensor.dtype).find(Boolean);
-  return dtypeFromConfig || DTYPE_LABELS[dtypeFromTensor] || quantization?.value || "metadata-only";
+  const dtypeFromHuggingFace = Object.keys(source.metadata.safetensors?.parameters || {})
+    .find((key) => Number(source.metadata.safetensors.parameters[key]) > 0);
+  return dtypeFromConfig || DTYPE_LABELS[dtypeFromTensor] || DTYPE_LABELS[dtypeFromHuggingFace] || quantization?.value || "metadata-only";
 }
 
 function estimateDeployment(storage, weights, quantization) {
@@ -711,6 +754,19 @@ function byteLength(text, bytes) {
     return bytes.byteLength;
   }
   return 0;
+}
+
+function huggingFaceParameterSummary(source = { metadata: {} }) {
+  const parameters = source.metadata?.safetensors?.parameters || {};
+  const totalFromParameters = Object.values(parameters).reduce(
+    (total, value) => total + (Number.isFinite(value) ? value : 0),
+    0
+  );
+  const totalFromMetadata = source.metadata?.safetensors?.total;
+  return {
+    parameters,
+    total: Number.isFinite(totalFromMetadata) ? totalFromMetadata : totalFromParameters
+  };
 }
 
 function mergeTensorEntries(...groups) {

@@ -102,6 +102,9 @@ test("analyzes a local transformer package from config and safetensors metadata"
   assert.equal(analysis.weights.totalParameters, 61865984);
   assert.ok(analysis.structure.nodes.some((node) => node.kind === "attention"));
   assert.ok(analysis.dataflow.edges.some((edge) => edge.to === "kv-cache"));
+  assert.ok(analysis.diagram.nodes.some((node) => node.id === "residual"));
+  assert.ok(analysis.diagram.edges.some((edge) => edge.from === "attention" && edge.to === "residual"));
+  assert.ok(analysis.diagram.edges.some((edge) => edge.from === "residual" && edge.to === "mlp"));
   assert.ok(
     analysis.facts.some(
       (fact) =>
@@ -148,6 +151,83 @@ test("detects diffusion anatomy across U-Net, VAE, and DiT-style configs", () =>
   assert.ok(analysis.structure.nodes.some((node) => node.kind === "vae"));
   assert.ok(analysis.structure.nodes.some((node) => node.kind === "dit"));
   assert.ok(analysis.dataflow.edges.some((edge) => edge.from === "conditioning"));
+});
+
+test("builds an overview architecture diagram for diffusion pipelines", () => {
+  const analysis = analyzeModelPackage({
+    source: { type: "hugging-face", label: "black-forest-labs/FLUX.1-dev" },
+    files: [
+      {
+        path: "model_index.json",
+        size: 100,
+        text: JSON.stringify({ _class_name: "FluxPipeline" })
+      },
+      {
+        path: "text_encoder/config.json",
+        size: 120,
+        text: JSON.stringify({ _class_name: "CLIPTextModel" })
+      },
+      {
+        path: "text_encoder_2/config.json",
+        size: 120,
+        text: JSON.stringify({ _class_name: "T5EncoderModel" })
+      },
+      {
+        path: "transformer/config.json",
+        size: 140,
+        text: JSON.stringify({ _class_name: "FluxTransformer2DModel", num_layers: 57 })
+      },
+      {
+        path: "vae/config.json",
+        size: 100,
+        text: JSON.stringify({ _class_name: "AutoencoderKL" })
+      }
+    ]
+  });
+
+  assert.ok(analysis.diagram);
+  assert.ok(analysis.diagram.lanes.some((lane) => lane.id === "prepare"));
+  assert.ok(analysis.diagram.lanes.some((lane) => lane.id === "denoise"));
+  assert.ok(analysis.diagram.nodes.some((node) => node.id === "prompt" && node.role === "input"));
+  assert.ok(analysis.diagram.nodes.some((node) => node.id === "dit" && node.kind === "dit"));
+  assert.ok(analysis.diagram.edges.some((edge) => edge.to === "image"));
+});
+
+test("uses Hugging Face API metadata for storage and parameter estimates", () => {
+  const analysis = analyzeModelPackage({
+    source: {
+      type: "hugging-face",
+      label: "org/remote-model",
+      metadata: {
+        usedStorage: 24_000_000_000,
+        safetensors: {
+          parameters: { BF16: 12_000_000_000, F32: 1000 },
+          total: 12_000_001_000
+        }
+      }
+    },
+    files: [
+      {
+        path: "config.json",
+        size: 200,
+        text: JSON.stringify({ model_type: "llama", hidden_size: 4096 })
+      },
+      { path: "model-00001-of-00002.safetensors", size: 0 },
+      { path: "model-00002-of-00002.safetensors", size: 0 }
+    ]
+  });
+
+  assert.equal(analysis.storage.totalBytes, 24_000_000_000);
+  assert.equal(analysis.weights.totalParameters, 12_000_001_000);
+  assert.equal(analysis.overview.precision, "bfloat16");
+  assert.ok(
+    analysis.facts.some(
+      (fact) =>
+        fact.key === "hf_safetensors_parameters" &&
+        fact.status === "verified" &&
+        fact.source === "huggingface"
+    )
+  );
 });
 
 test("records GGUF storage and quantization as filename-derived inferences", () => {

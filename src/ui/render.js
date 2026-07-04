@@ -84,31 +84,39 @@ function renderView(analysis, state) {
   if (view === "Diff") {
     return renderDiff(state.diff);
   }
-  return renderOverview(analysis);
+  return renderOverview(analysis, state.selectedId);
 }
 
-function renderOverview(analysis) {
+function renderOverview(analysis, selectedId) {
   const estimate = analysis.overview.deploymentEstimate;
+  const selectedDiagramNode = findDiagramNode(analysis, selectedId);
   return `
-    <div class="overview-grid">
-      <section class="overview-hero">
-        <div class="model-glyph" aria-hidden="true">
-          <span></span><span></span><span></span><span></span>
+    <div class="overview-workbench">
+      <section class="architecture-stage">
+        <div class="stage-header">
+          <div>
+            <p class="eyebrow">${escapeHtml(analysis.source.type)}</p>
+            <h3>${escapeHtml(analysis.diagram.title)}</h3>
+          </div>
+          <span>${escapeHtml(analysis.overview.modality)} / ${escapeHtml(analysis.overview.precision)}</span>
         </div>
-        <div>
-          <p class="eyebrow">${escapeHtml(analysis.source.type)}</p>
-          <h3>${escapeHtml(analysis.overview.architecture)}</h3>
-          <p>${escapeHtml(analysis.overview.modality)} / ${escapeHtml(analysis.overview.precision)}</p>
-        </div>
+        ${renderArchitectureDiagram(analysis.diagram, selectedId)}
       </section>
-      <section class="estimate-panel">
-        ${renderValueRow("Disk", formatBytes(estimate.disk))}
-        ${renderValueRow("Estimated VRAM", formatBytes(estimate.estimatedVram))}
-        ${renderValueRow("Basis", estimate.note)}
-      </section>
-      <section class="fact-radar">
-        ${analysis.facts.slice(0, 8).map(renderFactChip).join("")}
-      </section>
+      <aside class="overview-sidecar">
+        <section class="module-summary">
+          <span>Selected module</span>
+          <strong>${escapeHtml(selectedDiagramNode?.label || analysis.overview.architecture)}</strong>
+          <small>${escapeHtml(selectedDiagramNode ? `${selectedDiagramNode.kind} / ${selectedDiagramNode.role}` : "model overview")}</small>
+        </section>
+        <section class="estimate-panel">
+          ${renderValueRow("Disk", formatBytes(estimate.disk))}
+          ${renderValueRow("Estimated VRAM", formatBytes(estimate.estimatedVram))}
+          ${renderValueRow("Basis", estimate.note)}
+        </section>
+        <section class="fact-radar">
+          ${analysis.facts.slice(0, 6).map(renderFactChip).join("")}
+        </section>
+      </aside>
     </div>
   `;
 }
@@ -117,20 +125,121 @@ function renderAnatomy(analysis, selectedId) {
   const children = analysis.structure.links
     .map((link) => analysis.structure.nodes.find((node) => node.id === link.to))
     .filter(Boolean);
+  const selected = children.find((node) => node.id === selectedId) || children[0];
   return `
-    <div class="anatomy-board">
-      ${children
-        .map(
-          (node, index) => `
-            <button class="anatomy-node ${node.id === selectedId ? "selected" : ""}" type="button" data-select-id="${escapeHtml(node.id)}" style="--i:${index}">
-              <span>${escapeHtml(node.kind)}</span>
-              <strong>${escapeHtml(node.label)}</strong>
-              <small>${escapeHtml(node.source)} / ${escapeHtml(node.status)}</small>
-            </button>
-          `
-        )
-        .join("")}
+    <div class="anatomy-layout">
+      ${renderModuleFocus(analysis, selected)}
+      <div class="anatomy-board">
+        ${children
+          .map(
+            (node, index) => `
+              <button class="anatomy-node ${node.id === selectedId ? "selected" : ""}" type="button" data-select-id="${escapeHtml(node.id)}" style="--i:${index}">
+                <span>${escapeHtml(node.kind)}</span>
+                <strong>${escapeHtml(node.label)}</strong>
+                <small>${escapeHtml(node.source)} / ${escapeHtml(node.status)}</small>
+              </button>
+            `
+          )
+          .join("")}
+      </div>
     </div>
+  `;
+}
+
+function renderArchitectureDiagram(diagram, selectedId) {
+  const width = 1120;
+  const laneHeight = 116;
+  const height = Math.max(360, 58 + diagram.lanes.length * laneHeight);
+  const laneYById = Object.fromEntries(
+    diagram.lanes.map((lane, index) => [lane.id, 42 + index * laneHeight])
+  );
+  const nodesByLane = Object.fromEntries(
+    diagram.lanes.map((lane) => [lane.id, diagram.nodes.filter((node) => node.lane === lane.id)])
+  );
+  const positionedNodes = Object.fromEntries(
+    diagram.nodes.map((node) => {
+      const laneNodes = nodesByLane[node.lane] || [node];
+      const index = laneNodes.findIndex((item) => item.id === node.id);
+      const spacing = 860 / Math.max(laneNodes.length, 1);
+      const x = 205 + spacing * index + spacing / 2;
+      const y = laneYById[node.lane] + 50;
+      return [node.id, { ...node, x, y }];
+    })
+  );
+
+  return `
+    <svg class="architecture-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(diagram.title)}">
+      <defs>
+        <marker id="archArrow" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L8,3 z"></path>
+        </marker>
+      </defs>
+      ${diagram.lanes.map((lane) => renderDiagramLane(lane, laneYById[lane.id], width)).join("")}
+      ${diagram.edges.map((edge) => renderDiagramEdge(edge, positionedNodes)).join("")}
+      ${Object.values(positionedNodes).map((node) => renderDiagramNode(node, selectedId)).join("")}
+    </svg>
+  `;
+}
+
+function renderDiagramLane(lane, y, width) {
+  return `
+    <g class="diagram-lane ${escapeHtml(lane.tone || "blue")}" transform="translate(18 ${y})">
+      <rect width="${width - 36}" height="94" rx="14"></rect>
+      <text x="22" y="32">${escapeHtml(lane.label)}</text>
+    </g>
+  `;
+}
+
+function renderDiagramNode(node, selectedId) {
+  const nodeWidth = node.role === "module" ? 150 : 118;
+  const nodeHeight = node.role === "module" ? 58 : 46;
+  return `
+    <g class="diagram-node ${escapeHtml(node.role)} ${node.id === selectedId ? "selected" : ""}" data-select-id="${escapeHtml(node.id)}" transform="translate(${node.x} ${node.y})">
+      <rect x="${-nodeWidth / 2}" y="${-nodeHeight / 2}" width="${nodeWidth}" height="${nodeHeight}" rx="11"></rect>
+      <text class="node-title" y="-5" text-anchor="middle">${escapeHtml(node.label)}</text>
+      <text class="node-meta" y="17" text-anchor="middle">${escapeHtml(node.kind)}</text>
+    </g>
+  `;
+}
+
+function renderDiagramEdge(edge, nodes) {
+  const from = nodes[edge.from];
+  const to = nodes[edge.to];
+  if (!from || !to) {
+    return "";
+  }
+  const startX = from.x + 62;
+  const endX = to.x - 62;
+  const midX = (startX + endX) / 2;
+  const controlY = from.y === to.y ? from.y - 24 : (from.y + to.y) / 2;
+  return `
+    <path class="diagram-edge" d="M ${startX} ${from.y} C ${midX} ${controlY}, ${midX} ${controlY}, ${endX} ${to.y}" marker-end="url(#archArrow)"></path>
+    <text class="diagram-edge-label" x="${midX}" y="${controlY - 7}" text-anchor="middle">${escapeHtml(edge.label || "")}</text>
+  `;
+}
+
+function renderModuleFocus(analysis, selected) {
+  if (!selected) {
+    return `<section class="module-focus"><div class="empty-state"><strong>No module</strong><span>Select a structure node.</span></div></section>`;
+  }
+  const relatedEdges = analysis.dataflow.edges.filter(
+    (edge) => edge.from === selected.id || edge.to === selected.id
+  );
+  const diagramNode = findDiagramNode(analysis, selected.id);
+  return `
+    <section class="module-focus ${selected.kind}">
+      <div class="module-chip">${escapeHtml(selected.kind)}</div>
+      <h3>${escapeHtml(selected.label)}</h3>
+      <p>${escapeHtml(selected.source)} / ${escapeHtml(selected.status)}</p>
+      <div class="module-glyph" aria-hidden="true">
+        <span></span><span></span><span></span>
+      </div>
+      <div class="module-stats">
+        ${Object.entries(selected.metrics || {}).map(([key, value]) => renderValueRow(key, value || "unknown")).join("")}
+        ${diagramNode ? renderValueRow("Diagram lane", diagramNode.lane) : ""}
+        ${renderValueRow("Connected flows", relatedEdges.length)}
+      </div>
+    </section>
   `;
 }
 
@@ -300,6 +409,20 @@ function renderDetail(analysis, selectedId) {
       ${renderValueRow("Tensor count", analysis.storage.gguf.tensorCount)}
       ${renderValueRow("Architecture", metadata["general.architecture"] || "unknown")}
       ${renderValueRow("Name", metadata["general.name"] || "unknown")}
+    `;
+  }
+  const diagramNode = findDiagramNode(analysis, selectedId);
+  if (diagramNode) {
+    const relatedEdges = analysis.diagram.edges.filter(
+      (edge) => edge.from === selectedId || edge.to === selectedId
+    );
+    return `
+      ${renderValueRow("Module", diagramNode.label)}
+      ${renderValueRow("Kind", diagramNode.kind)}
+      ${renderValueRow("Role", diagramNode.role)}
+      ${renderValueRow("Lane", diagramNode.lane)}
+      ${renderValueRow("Connected edges", relatedEdges.length)}
+      ${Object.entries(diagramNode.metrics || {}).map(([key, value]) => renderValueRow(key, value || "unknown")).join("")}
     `;
   }
   const node = analysis.structure.nodes.find((item) => item.id === selectedId);
@@ -482,6 +605,10 @@ function findFile(analysis, selectedId) {
 function findShard(analysis, selectedId) {
   const path = decodeSelectionValue(selectedId, "shard:");
   return analysis.storage.shards?.find((shard) => shard.path === path);
+}
+
+function findDiagramNode(analysis, selectedId) {
+  return analysis.diagram?.nodes.find((node) => node.id === selectedId);
 }
 
 function decodeSelectionValue(selectedId, prefix) {
