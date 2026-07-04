@@ -1,3 +1,5 @@
+import { toFiniteNumber } from "../core/numbers.js";
+
 const HEADER_LIMIT_BYTES = 8 * 1024 * 1024;
 const TEXT_LIMIT_BYTES = 2 * 1024 * 1024;
 
@@ -24,10 +26,13 @@ export async function loadHuggingFacePackage(input) {
   }
   const model = await modelResponse.json();
   const siblings = Array.isArray(model.siblings) ? model.siblings : [];
-  const metadataFiles = siblings.map((sibling) => ({
-    path: sibling.rfilename,
-    size: fileSizeFromSibling(sibling)
-  }));
+  const treeFiles = await loadHuggingFaceTreeFiles(repo);
+  const metadataFiles = treeFiles.length > 0
+    ? treeFiles
+    : siblings.map((sibling) => ({
+        path: sibling.rfilename,
+        size: fileSizeFromSibling(sibling)
+      }));
   const enrichedFiles = await Promise.all(
     metadataFiles.map(async (file) => {
       if (!isFetchableMetadata(file.path)) {
@@ -44,29 +49,55 @@ export async function loadHuggingFacePackage(input) {
       label: repo,
       metadata: {
         cardData: model.cardData,
-        safetensors: model.safetensors,
-        usedStorage: model.usedStorage
+        safetensors: normalizeSafetensorsSummary(model.safetensors),
+        usedStorage: toFiniteNumber(model.usedStorage)
       }
     },
-    files: [
-      ...enrichedFiles,
-      {
-        path: "README.md",
-        size: model.cardData ? JSON.stringify(model.cardData).length : 0,
-        text: model.cardData ? JSON.stringify(model.cardData, null, 2) : ""
-      }
-    ]
+    files: enrichedFiles
   };
 }
 
+async function loadHuggingFaceTreeFiles(repo) {
+  try {
+    const response = await fetch(`https://huggingface.co/api/models/${repo}/tree/main?recursive=1`);
+    if (!response.ok) {
+      return [];
+    }
+    const entries = await response.json();
+    if (!Array.isArray(entries)) {
+      return [];
+    }
+    return entries
+      .filter((entry) => entry?.type === "file" && typeof entry.path === "string")
+      .map((entry) => ({
+        path: entry.path,
+        size: fileSizeFromSibling(entry)
+      }));
+  } catch {
+    return [];
+  }
+}
+
 function fileSizeFromSibling(sibling) {
-  if (Number.isFinite(sibling.size)) {
-    return sibling.size;
+  return toFiniteNumber(sibling.size) || toFiniteNumber(sibling.lfs?.size) || 0;
+}
+
+function normalizeSafetensorsSummary(summary) {
+  if (!summary || typeof summary !== "object") {
+    return undefined;
   }
-  if (Number.isFinite(sibling.lfs?.size)) {
-    return sibling.lfs.size;
-  }
-  return 0;
+  const parameters = Object.entries(summary.parameters || {}).reduce(
+    (accumulator, [dtype, value]) => ({
+      ...accumulator,
+      [dtype]: toFiniteNumber(value) || 0
+    }),
+    {}
+  );
+  return {
+    ...summary,
+    parameters,
+    total: toFiniteNumber(summary.total) || Object.values(parameters).reduce((total, value) => total + value, 0)
+  };
 }
 
 async function materializeBrowserFile(file) {

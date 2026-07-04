@@ -14,6 +14,8 @@ let state = {
   analysis: undefined,
   baseline: undefined,
   diff: undefined,
+  expandedModules: [],
+  moduleDialogId: undefined,
   selectedId: "model",
   status: "Ready"
 };
@@ -33,6 +35,8 @@ function analyzePackage(modelPackage, patch = {}) {
     ...patch,
     analysis,
     diff,
+    expandedModules: [],
+    moduleDialogId: undefined,
     selectedId: "model",
     status: `${analysis.storage.files.length} files analyzed`
   });
@@ -66,6 +70,8 @@ function loadDemo() {
     analysis,
     baseline,
     diff: diffAnalyses(baseline, analysis),
+    expandedModules: [],
+    moduleDialogId: undefined,
     selectedId: "model",
     status: "Demo LoRA compared with demo base"
   });
@@ -89,7 +95,6 @@ function compareWithBaseline() {
     return;
   }
   setState({
-    activeView: "Diff",
     diff: diffAnalyses(state.baseline, state.analysis),
     status: "Diff refreshed"
   });
@@ -109,7 +114,7 @@ async function runTask(status, task) {
 function handleViewClick(event) {
   const view = event.target.closest("[data-view]")?.dataset.view;
   if (view) {
-    setState({ activeView: view });
+    setState({ activeView: view, moduleDialogId: undefined });
   }
 }
 
@@ -118,6 +123,39 @@ function handleSelectionClick(event) {
   if (id) {
     setState({ selectedId: id });
   }
+}
+
+function handleCanvasClick(event) {
+  if (event.target.closest("[data-modal-close]") || event.target.matches("[data-modal-backdrop]")) {
+    setState({ moduleDialogId: undefined });
+    return;
+  }
+
+  const toggleId = event.target.closest("[data-toggle-module]")?.dataset.toggleModule;
+  if (toggleId) {
+    setState({
+      expandedModules: toggleArray(state.expandedModules, toggleId),
+      selectedId: toggleId
+    });
+    return;
+  }
+
+  const openId = event.target.closest("[data-open-module]")?.dataset.openModule;
+  if (openId) {
+    setState({
+      moduleDialogId: openId,
+      selectedId: openId
+    });
+    return;
+  }
+
+  handleSelectionClick(event);
+}
+
+function toggleArray(values, value) {
+  return values.includes(value)
+    ? values.filter((item) => item !== value)
+    : [...values, value];
 }
 
 async function handleExport(kind) {
@@ -143,7 +181,7 @@ function bindEvents() {
   document.getElementById("compareButton").addEventListener("click", compareWithBaseline);
   document.getElementById("viewTabs").addEventListener("click", handleViewClick);
   document.getElementById("structureTree").addEventListener("click", handleSelectionClick);
-  document.getElementById("viewCanvas").addEventListener("click", handleSelectionClick);
+  document.getElementById("viewCanvas").addEventListener("click", handleCanvasClick);
   document.getElementById("exportSvg").addEventListener("click", () => handleExport("SVG"));
   document.getElementById("exportPng").addEventListener("click", () => handleExport("PNG"));
   document.getElementById("exportPdf").addEventListener("click", () => handleExport("PDF"));

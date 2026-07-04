@@ -1,39 +1,48 @@
 export function buildArchitectureDiagram(anatomy, structure, dataflow, configEntries, weights, storage) {
   if (anatomy.family === "diffusion") {
+    const coreId = anatomy.hasDit ? "dit" : "unet";
+    const coreNode = anatomy.hasDit
+      ? diagramNode("dit", "Diffusion Transformer", "dit", "module", "core", {
+          layers: numberFromConfigs(configEntries, ["num_layers"]) || "unknown"
+        }, { x: 640, y: 276 })
+      : diagramNode("unet", "U-Net denoiser", "unet", "module", "core", {}, { x: 640, y: 276 });
     return {
       title: "Diffusion generation path",
       lanes: [
-        { id: "prepare", label: "Prepare", tone: "violet" },
-        { id: "denoise", label: "Denoise", tone: "rose" },
-        { id: "core", label: "Core model", tone: "amber" },
-        { id: "decode", label: "Decode", tone: "green" }
+        { id: "prepare", label: "Prepare inputs", tone: "violet" },
+        { id: "denoise", label: "Denoise loop", tone: "rose" },
+        { id: "core", label: "Real inference module", tone: "amber" },
+        { id: "decode", label: "Decode output", tone: "green" }
       ],
       nodes: [
-        diagramNode("prompt", "Prompt", "input", "input", "prepare"),
-        diagramNode("noise", "Noise / latent", "latent", "input", "prepare"),
-        diagramNode("clip", "CLIP encoder", "encoder", "module", "prepare"),
-        diagramNode("t5", "T5 encoder", "encoder", "module", "prepare"),
-        diagramNode("timesteps", "Timesteps", "schedule", "input", "prepare"),
-        anatomy.hasDit
-          ? diagramNode("dit", "Diffusion Transformer", "dit", "module", "core", {
-              layers: numberFromConfigs(configEntries, ["num_layers"]) || "unknown"
-            })
-          : diagramNode("unet", "U-Net denoiser", "unet", "module", "core"),
-        diagramNode("scheduler", "Scheduler loop", "scheduler", "module", "denoise"),
+        diagramNode("prompt", "Prompt", "input", "input", "prepare", {}, { x: 120, y: 92 }),
+        diagramNode("clip", "CLIP encoder", "encoder", "module", "prepare", {}, { x: 330, y: 92 }),
+        diagramNode("t5", "T5 encoder", "encoder", "module", "prepare", {}, { x: 515, y: 92 }),
+        diagramNode("latent", "Noise latent", "latent", "input", "prepare", {}, { x: 760, y: 92 }),
+        diagramNode("timesteps", "Timesteps", "schedule", "input", "prepare", {}, { x: 960, y: 92 }),
+        diagramNode("scheduler", "Scheduler", "scheduler", "module", "denoise", {
+          role: "select timestep, call denoiser, update latent"
+        }, { x: 430, y: 204 }),
+        coreNode,
+        diagramNode("latent-update", "Latent update", "scheduler", "state", "denoise", {
+          loop: "repeats until final denoised latent"
+        }, { x: 820, y: 204 }),
         anatomy.hasVae
-          ? diagramNode("vae", "VAE decoder", "vae", "module", "decode")
-          : diagramNode("decoder", "Decoder", "decoder", "module", "decode"),
-        diagramNode("image", "Image", "output", "output", "decode")
+          ? diagramNode("vae", "VAE decoder", "vae", "module", "decode", {}, { x: 660, y: 430 })
+          : diagramNode("decoder", "Decoder", "decoder", "module", "decode", {}, { x: 660, y: 430 }),
+        diagramNode("image", "Image", "output", "output", "decode", {}, { x: 910, y: 430 })
       ],
       edges: [
         { from: "prompt", to: "clip", label: "tokens" },
         { from: "prompt", to: "t5", label: "tokens" },
-        { from: "clip", to: anatomy.hasDit ? "dit" : "unet", label: "conditioning" },
-        { from: "t5", to: anatomy.hasDit ? "dit" : "unet", label: "text embeddings" },
-        { from: "noise", to: "scheduler", label: "latent" },
-        { from: "timesteps", to: "scheduler", label: "t" },
-        { from: "scheduler", to: anatomy.hasDit ? "dit" : "unet", label: "denoise step" },
-        { from: anatomy.hasDit ? "dit" : "unet", to: anatomy.hasVae ? "vae" : "decoder", label: "denoised latent" },
+        { from: "clip", to: coreId, label: "pooled embedding" },
+        { from: "t5", to: coreId, label: "sequence embedding" },
+        { from: "latent", to: "scheduler", label: "initial latent" },
+        { from: "timesteps", to: "scheduler", label: "schedule" },
+        { from: "scheduler", to: coreId, label: "latent + timestep" },
+        { from: coreId, to: "latent-update", label: "noise / velocity prediction" },
+        { from: "latent-update", to: "scheduler", label: "updated latent" },
+        { from: "latent-update", to: anatomy.hasVae ? "vae" : "decoder", label: "final latent" },
         { from: anatomy.hasVae ? "vae" : "decoder", to: "image", label: "pixels" }
       ]
     };
@@ -90,8 +99,8 @@ export function buildArchitectureDiagram(anatomy, structure, dataflow, configEnt
   };
 }
 
-function diagramNode(id, label, kind, role, lane, metrics = {}) {
-  return { id, label, kind, role, lane, metrics };
+function diagramNode(id, label, kind, role, lane, metrics = {}, position = undefined) {
+  return { id, label, kind, role, lane, metrics, position };
 }
 
 function numberFromConfigs(configEntries, keys) {

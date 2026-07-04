@@ -150,7 +150,8 @@ test("detects diffusion anatomy across U-Net, VAE, and DiT-style configs", () =>
   assert.ok(analysis.structure.nodes.some((node) => node.kind === "unet"));
   assert.ok(analysis.structure.nodes.some((node) => node.kind === "vae"));
   assert.ok(analysis.structure.nodes.some((node) => node.kind === "dit"));
-  assert.ok(analysis.dataflow.edges.some((edge) => edge.from === "conditioning"));
+  assert.ok(analysis.dataflow.edges.some((edge) => edge.from === "clip" && edge.to === "dit"));
+  assert.ok(analysis.dataflow.edges.some((edge) => edge.from === "scheduler" && edge.to === "dit"));
 });
 
 test("builds an overview architecture diagram for diffusion pipelines", () => {
@@ -190,7 +191,14 @@ test("builds an overview architecture diagram for diffusion pipelines", () => {
   assert.ok(analysis.diagram.lanes.some((lane) => lane.id === "denoise"));
   assert.ok(analysis.diagram.nodes.some((node) => node.id === "prompt" && node.role === "input"));
   assert.ok(analysis.diagram.nodes.some((node) => node.id === "dit" && node.kind === "dit"));
+  assert.ok(analysis.diagram.nodes.some((node) => node.id === "latent-update" && node.kind === "scheduler"));
+  assert.ok(analysis.diagram.edges.some((edge) => edge.from === "dit" && edge.label === "noise / velocity prediction"));
+  assert.ok(analysis.diagram.edges.some((edge) => edge.from === "latent-update" && edge.to === "scheduler"));
+  assert.ok(analysis.diagram.edges.some((edge) => edge.from === "scheduler" && edge.to === "dit"));
   assert.ok(analysis.diagram.edges.some((edge) => edge.to === "image"));
+  assert.ok(analysis.dataflow.nodes.indexOf("prompt") < analysis.dataflow.nodes.indexOf("image"));
+  assert.ok(analysis.dataflow.nodes.includes("latent-update"));
+  assert.ok(analysis.structure.nodes.find((node) => node.id === "scheduler")?.details?.length > 0);
 });
 
 test("uses Hugging Face API metadata for storage and parameter estimates", () => {
@@ -199,10 +207,10 @@ test("uses Hugging Face API metadata for storage and parameter estimates", () =>
       type: "hugging-face",
       label: "org/remote-model",
       metadata: {
-        usedStorage: 24_000_000_000,
+        usedStorage: 64_000_000_000,
         safetensors: {
-          parameters: { BF16: 12_000_000_000, F32: 1000 },
-          total: 12_000_001_000
+          parameters: { BF16: "12000000000", F32: 1000 },
+          total: "12000001000"
         }
       }
     },
@@ -212,14 +220,19 @@ test("uses Hugging Face API metadata for storage and parameter estimates", () =>
         size: 200,
         text: JSON.stringify({ model_type: "llama", hidden_size: 4096 })
       },
-      { path: "model-00001-of-00002.safetensors", size: 0 },
-      { path: "model-00002-of-00002.safetensors", size: 0 }
+      { path: "model-00001-of-00002.safetensors", size: 20_000_000_000 },
+      { path: "model-00002-of-00002.safetensors", size: 14_000_000_000 }
     ]
   });
 
-  assert.equal(analysis.storage.totalBytes, 24_000_000_000);
+  assert.equal(analysis.storage.totalBytes, 34_000_000_200);
+  assert.equal(analysis.storage.repositoryStorageBytes, 64_000_000_000);
   assert.equal(analysis.weights.totalParameters, 12_000_001_000);
+  assert.equal(analysis.weights.externalWeightBytes, 24_000_004_000);
+  assert.equal(analysis.overview.deploymentEstimate.disk, 34_000_000_200);
+  assert.equal(analysis.overview.deploymentEstimate.estimatedVram, 26_880_004_480);
   assert.equal(analysis.overview.precision, "bfloat16");
+  assert.equal(analysis.views.includes("Diff"), false);
   assert.ok(
     analysis.facts.some(
       (fact) =>
@@ -228,6 +241,33 @@ test("uses Hugging Face API metadata for storage and parameter estimates", () =>
         fact.source === "huggingface"
     )
   );
+});
+
+test("uses active diffusers footprint when a repository also has root checkpoint alternatives", () => {
+  const analysis = analyzeModelPackage({
+    source: {
+      type: "hugging-face",
+      label: "org/flux-style",
+      metadata: { usedStorage: 64_000_000_000 }
+    },
+    files: [
+      { path: "flux1-dev.safetensors", size: 24_000_000_000 },
+      { path: "ae.safetensors", size: 300_000_000 },
+      { path: "model_index.json", size: 200, text: JSON.stringify({ _class_name: "FluxPipeline" }) },
+      { path: "transformer/config.json", size: 200, text: JSON.stringify({ _class_name: "FluxTransformer2DModel" }) },
+      { path: "transformer/diffusion_pytorch_model-00001-of-00002.safetensors", size: 12_000_000_000 },
+      { path: "transformer/diffusion_pytorch_model-00002-of-00002.safetensors", size: 12_000_000_000 },
+      { path: "text_encoder_2/model-00001-of-00002.safetensors", size: 5_000_000_000 },
+      { path: "text_encoder_2/model-00002-of-00002.safetensors", size: 4_000_000_000 },
+      { path: "vae/diffusion_pytorch_model.safetensors", size: 180_000_000 }
+    ]
+  });
+
+  assert.equal(analysis.storage.fileTotalBytes, 57_480_000_400);
+  assert.equal(analysis.storage.totalBytes, 33_180_000_400);
+  assert.equal(analysis.storage.alternativeBytes, 24_300_000_000);
+  assert.equal(analysis.storage.totalBasis, "active diffusers component files");
+  assert.equal(analysis.overview.deploymentEstimate.disk, 33_180_000_400);
 });
 
 test("records GGUF storage and quantization as filename-derived inferences", () => {

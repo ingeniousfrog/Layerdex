@@ -1,7 +1,12 @@
 import { buildArchitectureDiagram } from "./diagram.js";
+import { formatForPath } from "./file-format.js";
 import { readGgufFile } from "./gguf.js";
+import { defaultNodeDetails } from "./module-details.js";
+import { toFiniteNumber } from "./numbers.js";
 import { readSafetensorsFile } from "./safetensors.js";
 import { readSafetensorsIndexes } from "./safetensors-index.js";
+import { summarizeStorageFootprint } from "./storage-footprint.js";
+import { bytesByDtype, huggingFaceParameterSummary } from "./weight-estimates.js";
 
 const CONFIG_FACT_KEYS = [
   "_class_name",
@@ -120,14 +125,14 @@ export function analyzeModelPackage(modelPackage) {
           })
         ]
       : []),
-    ...(Number.isFinite(normalized.source.metadata.usedStorage)
+    ...(Number.isFinite(toFiniteNumber(normalized.source.metadata.usedStorage))
       ? [
           fact({
             key: "hf_used_storage",
             label: "Hugging Face storage",
             source: "huggingface",
             status: "verified",
-            value: normalized.source.metadata.usedStorage
+            value: toFiniteNumber(normalized.source.metadata.usedStorage)
           })
         ]
       : [])
@@ -210,14 +215,7 @@ export function analyzeModelPackage(modelPackage) {
     diagram,
     weights,
     storage,
-    views: [
-      "Overview",
-      "Anatomy",
-      "Dataflow",
-      "Weights",
-      "Storage",
-      "Diff"
-    ]
+    views: ["Overview", "Anatomy", "Dataflow", "Weights", "Storage"]
   };
 }
 
@@ -282,7 +280,7 @@ function validateModelPackage(modelPackage) {
         }
         return {
           path: file.path,
-          size: Number.isFinite(file.size) ? file.size : byteLength(file.text, file.bytes),
+          size: toFiniteNumber(file.size) || byteLength(file.text, file.bytes),
           text: typeof file.text === "string" ? file.text : undefined,
           bytes: file.bytes
         };
@@ -398,8 +396,11 @@ function inferAnatomy(files, configEntries, tensorEntries, quantization, adapter
   const hasVae = searchable.includes("vae") || searchable.includes("autoencoderkl");
   const hasDit =
     searchable.includes("dit") ||
+    searchable.includes("fluxpipeline") ||
+    searchable.includes("fluxtransformer") ||
     searchable.includes("transformer2d") ||
-    searchable.includes("sd3transformer");
+    searchable.includes("sd3transformer") ||
+    searchable.includes("transformer/");
   const hasMoe = searchable.includes("num_experts") || searchable.includes("experts");
   const hasTransformer =
     searchable.includes("llama") ||
@@ -460,7 +461,8 @@ function inferAnatomy(files, configEntries, tensorEntries, quantization, adapter
 }
 
 function buildStorage(files, quantization, indexReadout, ggufReadouts, adapter, source) {
-  const formats = files.reduce(
+  const footprint = summarizeStorageFootprint(files, source);
+  const formats = footprint.activeFiles.reduce(
     (accumulator, file) => ({
       ...accumulator,
       [formatForPath(file.path)]: {
@@ -471,18 +473,19 @@ function buildStorage(files, quantization, indexReadout, ggufReadouts, adapter, 
     {}
   );
 
-  const fileTotalBytes = files.reduce((total, file) => total + file.size, 0);
-  const sourceTotalBytes = Number.isFinite(source.metadata.usedStorage)
-    ? source.metadata.usedStorage
-    : 0;
-
   return {
-    totalBytes: Math.max(fileTotalBytes, sourceTotalBytes),
-    fileTotalBytes,
+    totalBytes: footprint.totalBytes,
+    fileTotalBytes: footprint.fileTotalBytes,
+    activeFileTotalBytes: footprint.activeFileTotalBytes,
+    alternativeBytes: footprint.alternativeBytes,
+    repositoryStorageBytes: footprint.repositoryStorageBytes,
+    totalBasis: footprint.totalBasis,
+    missingSizeCount: footprint.missingSizeCount,
     files: files.map((file) => ({
       path: file.path,
       size: file.size,
-      format: formatForPath(file.path)
+      format: formatForPath(file.path),
+      active: !footprint.alternativePaths.includes(file.path)
     })),
     formats,
     quantization: quantization?.value || "none detected",
@@ -497,6 +500,8 @@ function buildWeights(tensors, source) {
   const tensorParameters = tensors.reduce((total, tensor) => total + tensor.parameters, 0);
   const hfParameterSummary = huggingFaceParameterSummary(source);
   const totalParameters = Math.max(tensorParameters, hfParameterSummary.total);
+  const parameterByteBreakdown = bytesByDtype(hfParameterSummary.parameters);
+  const externalWeightBytes = Object.values(parameterByteBreakdown).reduce((total, value) => total + value, 0);
   const dtypeCounts = tensors.reduce(
     (accumulator, tensor) => ({
       ...accumulator,
@@ -526,6 +531,8 @@ function buildWeights(tensors, source) {
     tensorParameters,
     externalParameters: hfParameterSummary.total,
     parameterBreakdown: hfParameterSummary.parameters,
+    parameterByteBreakdown,
+    externalWeightBytes,
     dtypeCounts,
     groups,
     anomalies
@@ -554,7 +561,7 @@ function buildStructure(anatomy, configEntries, weights, adapter) {
     anatomy.hasVae ? node("vae", "VAE latent codec", "vae", "verified", "config") : undefined,
     anatomy.hasDit ? node("dit", "Diffusion transformer", "dit", "verified", "config") : undefined,
     node("conditioning", "Conditioning inputs", "conditioning", "inferred", "rule"),
-    node("scheduler", "Scheduler steps", "scheduler", "inferred", "rule")
+    node("scheduler", "Scheduler loop", "scheduler", "inferred", "rule")
   ].filter(Boolean);
   const unknownNodes = [
     node("files", "Model files", "files", "verified", "filesystem"),
@@ -582,14 +589,19 @@ function buildStructure(anatomy, configEntries, weights, adapter) {
         ? [...transformerNodes, ...moeNodes]
         : unknownNodes;
 
-  return {
-    rootId: "model",
-    nodes: [
+  const nodes = [
       node("model", anatomy.architecture, "model", "inferred", "rule", {
         modality: anatomy.modality
       }),
       ...children
-    ],
+    ].map((item) => ({
+      ...item,
+      details: item.details?.length ? item.details : defaultNodeDetails(item, anatomy)
+    }));
+
+  return {
+    rootId: "model",
+    nodes,
     links: children.map((child) => ({ from: "model", to: child.id }))
   };
 }
@@ -607,21 +619,34 @@ function buildDataflow(anatomy, adapter) {
   }
 
   if (anatomy.family === "diffusion") {
+    const coreNode = anatomy.hasDit ? "dit" : "unet";
     return {
-      nodes: ["conditioning", "scheduler", "dit", "unet", "vae", "image"].filter(
+      nodes: ["prompt", "clip", "t5", "latent", "timesteps", "scheduler", "dit", "unet", "latent-update", "vae", "image"].filter(
         (id) =>
-          id === "conditioning" ||
+          id === "prompt" ||
+          id === "clip" ||
+          id === "t5" ||
+          id === "latent" ||
+          id === "timesteps" ||
           id === "scheduler" ||
+          id === "latent-update" ||
           id === "image" ||
           (id === "dit" && anatomy.hasDit) ||
           (id === "unet" && anatomy.hasUnet) ||
           (id === "vae" && anatomy.hasVae)
       ),
       edges: [
-        { from: "conditioning", to: anatomy.hasDit ? "dit" : "unet", label: "text / image conditions" },
-        { from: "scheduler", to: anatomy.hasDit ? "dit" : "unet", label: "timestep" },
+        { from: "prompt", to: "clip", label: "tokens" },
+        { from: "prompt", to: "t5", label: "tokens" },
+        { from: "clip", to: coreNode, label: "pooled text embedding" },
+        { from: "t5", to: coreNode, label: "sequence text embedding" },
+        { from: "latent", to: "scheduler", label: "initial noise" },
+        { from: "timesteps", to: "scheduler", label: "schedule" },
+        { from: "scheduler", to: coreNode, label: "latent + timestep" },
+        { from: coreNode, to: "latent-update", label: "noise / velocity prediction" },
+        { from: "latent-update", to: "scheduler", label: "updated latent" },
         anatomy.hasDit && anatomy.hasUnet ? { from: "dit", to: "unet", label: "latent tokens" } : undefined,
-        anatomy.hasUnet && anatomy.hasVae ? { from: "unet", to: "vae", label: "denoised latent" } : undefined,
+        anatomy.hasVae ? { from: "latent-update", to: "vae", label: "final latent" } : undefined,
         anatomy.hasVae ? { from: "vae", to: "image", label: "decoded pixels" } : undefined
       ].filter(Boolean)
     };
@@ -659,12 +684,18 @@ function inferPrecision(configEntries, tensors, quantization, source = { metadat
 
 function estimateDeployment(storage, weights, quantization) {
   const weightBytes = weights.tensors.reduce((total, tensor) => total + (tensor.bytes || 0), 0);
-  const effectiveBytes = weightBytes || storage.totalBytes;
-  const vramBytes = quantization ? effectiveBytes * 1.18 : effectiveBytes * 1.32;
+  const effectiveWeightBytes = weightBytes || weights.externalWeightBytes || 0;
+  const vramSourceBytes = effectiveWeightBytes || storage.totalBytes;
+  const vramBytes = quantization ? vramSourceBytes * 1.08 : vramSourceBytes * 1.12;
+  const note = weightBytes > 0
+    ? "Tensor headers + dtype sizes"
+    : weights.externalWeightBytes > 0
+      ? "Hugging Face parameter summary + dtype sizes"
+      : storage.totalBasis;
   return {
-    disk: effectiveBytes,
+    disk: storage.totalBytes,
     estimatedVram: Math.round(vramBytes),
-    note: weightBytes > 0 ? "Derived from tensor metadata" : "Derived from file sizes"
+    note
   };
 }
 
@@ -685,8 +716,8 @@ function fact({ key, label, source, status, value, evidence }) {
   return { key, label, source, status, value, evidence };
 }
 
-function node(id, label, kind, status, source, metrics = {}) {
-  return { id, label, kind, status, source, metrics };
+function node(id, label, kind, status, source, metrics = {}, details = []) {
+  return { id, label, kind, status, source, metrics, details };
 }
 
 function factMap(analysis, source) {
@@ -705,23 +736,6 @@ function numberFromConfigs(configEntries, keys) {
   return configEntries
     .flatMap((entry) => keys.map((key) => entry.json[key]))
     .find((value) => Number.isFinite(value));
-}
-
-function formatForPath(path) {
-  const lowerPath = path.toLowerCase();
-  if (lowerPath.endsWith(".safetensors")) {
-    return "safetensors";
-  }
-  if (lowerPath.endsWith(".gguf")) {
-    return "gguf";
-  }
-  if (lowerPath.endsWith(".json")) {
-    return "json";
-  }
-  if (lowerPath.endsWith(".bin")) {
-    return "pytorch-bin";
-  }
-  return "other";
 }
 
 function tensorGroup(name) {
@@ -754,19 +768,6 @@ function byteLength(text, bytes) {
     return bytes.byteLength;
   }
   return 0;
-}
-
-function huggingFaceParameterSummary(source = { metadata: {} }) {
-  const parameters = source.metadata?.safetensors?.parameters || {};
-  const totalFromParameters = Object.values(parameters).reduce(
-    (total, value) => total + (Number.isFinite(value) ? value : 0),
-    0
-  );
-  const totalFromMetadata = source.metadata?.safetensors?.total;
-  return {
-    parameters,
-    total: Number.isFinite(totalFromMetadata) ? totalFromMetadata : totalFromParameters
-  };
 }
 
 function mergeTensorEntries(...groups) {

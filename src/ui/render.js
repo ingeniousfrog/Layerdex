@@ -70,10 +70,10 @@ function renderTreeButton(node, selectedId) {
 function renderView(analysis, state) {
   const view = state.activeView || "Overview";
   if (view === "Anatomy") {
-    return renderAnatomy(analysis, state.selectedId);
+    return renderAnatomy(analysis, state);
   }
   if (view === "Dataflow") {
-    return renderDataflow(analysis, state.selectedId);
+    return renderDataflow(analysis, state);
   }
   if (view === "Weights") {
     return renderWeights(analysis);
@@ -121,11 +121,13 @@ function renderOverview(analysis, selectedId) {
   `;
 }
 
-function renderAnatomy(analysis, selectedId) {
+function renderAnatomy(analysis, state) {
   const children = analysis.structure.links
     .map((link) => analysis.structure.nodes.find((node) => node.id === link.to))
     .filter(Boolean);
+  const selectedId = state.selectedId;
   const selected = children.find((node) => node.id === selectedId) || children[0];
+  const dialogNode = children.find((node) => node.id === state.moduleDialogId);
   return `
     <div class="anatomy-layout">
       ${renderModuleFocus(analysis, selected)}
@@ -133,7 +135,7 @@ function renderAnatomy(analysis, selectedId) {
         ${children
           .map(
             (node, index) => `
-              <button class="anatomy-node ${node.id === selectedId ? "selected" : ""}" type="button" data-select-id="${escapeHtml(node.id)}" style="--i:${index}">
+              <button class="anatomy-node ${node.id === selectedId ? "selected" : ""}" type="button" data-select-id="${escapeHtml(node.id)}" data-open-module="${escapeHtml(node.id)}" style="--i:${index}">
                 <span>${escapeHtml(node.kind)}</span>
                 <strong>${escapeHtml(node.label)}</strong>
                 <small>${escapeHtml(node.source)} / ${escapeHtml(node.status)}</small>
@@ -143,13 +145,15 @@ function renderAnatomy(analysis, selectedId) {
           .join("")}
       </div>
     </div>
+    ${dialogNode ? renderModuleDialog(dialogNode, analysis) : ""}
   `;
 }
 
-function renderArchitectureDiagram(diagram, selectedId) {
+function renderArchitectureDiagram(diagram, selectedId, options = {}) {
   const width = 1120;
   const laneHeight = 116;
   const height = Math.max(360, 58 + diagram.lanes.length * laneHeight);
+  const expandableIds = new Set(options.expandableIds || []);
   const laneYById = Object.fromEntries(
     diagram.lanes.map((lane, index) => [lane.id, 42 + index * laneHeight])
   );
@@ -158,6 +162,9 @@ function renderArchitectureDiagram(diagram, selectedId) {
   );
   const positionedNodes = Object.fromEntries(
     diagram.nodes.map((node) => {
+      if (node.position) {
+        return [node.id, { ...node, x: node.position.x, y: node.position.y }];
+      }
       const laneNodes = nodesByLane[node.lane] || [node];
       const index = laneNodes.findIndex((item) => item.id === node.id);
       const spacing = 860 / Math.max(laneNodes.length, 1);
@@ -176,7 +183,10 @@ function renderArchitectureDiagram(diagram, selectedId) {
       </defs>
       ${diagram.lanes.map((lane) => renderDiagramLane(lane, laneYById[lane.id], width)).join("")}
       ${diagram.edges.map((edge) => renderDiagramEdge(edge, positionedNodes)).join("")}
-      ${Object.values(positionedNodes).map((node) => renderDiagramNode(node, selectedId)).join("")}
+      ${Object.values(positionedNodes).map((node) => renderDiagramNode(node, selectedId, {
+        expandable: expandableIds.has(node.id),
+        expanded: options.expandedIds?.includes(node.id)
+      })).join("")}
     </svg>
   `;
 }
@@ -190,14 +200,24 @@ function renderDiagramLane(lane, y, width) {
   `;
 }
 
-function renderDiagramNode(node, selectedId) {
-  const nodeWidth = node.role === "module" ? 150 : 118;
+function renderDiagramNode(node, selectedId, options = {}) {
+  const nodeWidth = diagramNodeWidth(node);
   const nodeHeight = node.role === "module" ? 58 : 46;
   return `
     <g class="diagram-node ${escapeHtml(node.role)} ${node.id === selectedId ? "selected" : ""}" data-select-id="${escapeHtml(node.id)}" transform="translate(${node.x} ${node.y})">
       <rect x="${-nodeWidth / 2}" y="${-nodeHeight / 2}" width="${nodeWidth}" height="${nodeHeight}" rx="11"></rect>
       <text class="node-title" y="-5" text-anchor="middle">${escapeHtml(node.label)}</text>
       <text class="node-meta" y="17" text-anchor="middle">${escapeHtml(node.kind)}</text>
+      ${options.expandable ? renderDiagramExpander(node.id, nodeWidth, options.expanded) : ""}
+    </g>
+  `;
+}
+
+function renderDiagramExpander(nodeId, nodeWidth, expanded) {
+  return `
+    <g class="diagram-expander ${expanded ? "expanded" : ""}" data-toggle-module="${escapeHtml(nodeId)}" transform="translate(${nodeWidth / 2 - 13} ${-18})">
+      <circle r="10"></circle>
+      <text text-anchor="middle" dominant-baseline="central">${expanded ? "-" : "+"}</text>
     </g>
   `;
 }
@@ -208,14 +228,26 @@ function renderDiagramEdge(edge, nodes) {
   if (!from || !to) {
     return "";
   }
-  const startX = from.x + 62;
-  const endX = to.x - 62;
+  const direction = to.x >= from.x ? 1 : -1;
+  const startX = from.x + direction * (diagramNodeWidth(from) / 2 - 6);
+  const endX = to.x - direction * (diagramNodeWidth(to) / 2 - 6);
   const midX = (startX + endX) / 2;
-  const controlY = from.y === to.y ? from.y - 24 : (from.y + to.y) / 2;
+  const loopOffset = direction === -1 ? 58 : 0;
+  const controlY = from.y === to.y ? from.y - 24 - loopOffset : (from.y + to.y) / 2 - loopOffset;
   return `
     <path class="diagram-edge" d="M ${startX} ${from.y} C ${midX} ${controlY}, ${midX} ${controlY}, ${endX} ${to.y}" marker-end="url(#archArrow)"></path>
     <text class="diagram-edge-label" x="${midX}" y="${controlY - 7}" text-anchor="middle">${escapeHtml(edge.label || "")}</text>
   `;
+}
+
+function diagramNodeWidth(node) {
+  if (node.role === "module") {
+    return 172;
+  }
+  if (node.role === "state") {
+    return 142;
+  }
+  return 124;
 }
 
 function renderModuleFocus(analysis, selected) {
@@ -239,74 +271,191 @@ function renderModuleFocus(analysis, selected) {
         ${diagramNode ? renderValueRow("Diagram lane", diagramNode.lane) : ""}
         ${renderValueRow("Connected flows", relatedEdges.length)}
       </div>
+      ${renderDetailList(selected.details || [])}
     </section>
   `;
 }
 
-function renderDataflow(analysis, selectedId) {
-  const width = 920;
-  const height = 300;
-  const nodes = analysis.dataflow.nodes.map((id, index) => ({
-    id,
-    x: 70 + index * ((width - 140) / Math.max(analysis.dataflow.nodes.length - 1, 1)),
-    y: index % 2 === 0 ? 96 : 190
-  }));
-  const nodeById = Object.fromEntries(nodes.map((node) => [node.id, node]));
+function renderModuleDialog(node, analysis) {
   return `
-    <svg class="dataflow-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Dataflow">
-      <defs>
-        <marker id="arrow" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto">
-          <path d="M0,0 L0,6 L8,3 z"></path>
-        </marker>
-      </defs>
-      ${analysis.dataflow.edges
-        .map((edge) => renderDataflowEdge(edge, nodeById))
-        .join("")}
-      ${nodes
-        .map(
-          (node) => `
-            <g class="flow-node ${node.id === selectedId ? "selected" : ""}" data-select-id="${escapeHtml(node.id)}" transform="translate(${node.x}, ${node.y})">
-              <rect x="-58" y="-24" width="116" height="48" rx="7"></rect>
-              <text text-anchor="middle" dominant-baseline="middle">${escapeHtml(node.id)}</text>
-            </g>
-          `
-        )
-        .join("")}
-    </svg>
+    <div class="module-dialog-backdrop" role="presentation" data-modal-backdrop>
+      <section class="module-dialog" role="dialog" aria-modal="true" aria-label="${escapeHtml(node.label)} details">
+        <button class="dialog-close" type="button" data-modal-close aria-label="Close details">x</button>
+        ${renderModuleDetailCard(node, analysis)}
+      </section>
+    </div>
   `;
 }
 
-function renderDataflowEdge(edge, nodeById) {
-  const from = nodeById[edge.from];
-  const to = nodeById[edge.to];
-  if (!from || !to) {
+function renderModuleDetailCard(node, analysis) {
+  const relatedEdges = [
+    ...analysis.diagram.edges.filter((edge) => edge.from === node.id || edge.to === node.id),
+    ...analysis.dataflow.edges.filter((edge) => edge.from === node.id || edge.to === node.id)
+  ];
+  return `
+    <article class="module-detail-card ${escapeHtml(node.kind)}">
+      <div class="module-detail-heading">
+        <span>${escapeHtml(node.kind)}</span>
+        <strong>${escapeHtml(node.label)}</strong>
+        <small>${escapeHtml(node.source)} / ${escapeHtml(node.status)}</small>
+      </div>
+      ${renderDetailList(node.details || [])}
+      <div class="module-stats compact">
+        ${Object.entries(node.metrics || {}).map(([key, value]) => renderValueRow(key, value || "unknown")).join("")}
+        ${renderValueRow("Connected flows", relatedEdges.length)}
+      </div>
+    </article>
+  `;
+}
+
+function renderDetailList(details) {
+  if (!details.length) {
     return "";
   }
-  const midX = (from.x + to.x) / 2;
-  const midY = (from.y + to.y) / 2 - 26;
   return `
-    <path class="flow-edge" d="M ${from.x + 56} ${from.y} Q ${midX} ${midY} ${to.x - 56} ${to.y}" marker-end="url(#arrow)"></path>
-    <text class="flow-label" x="${midX}" y="${midY - 5}" text-anchor="middle">${escapeHtml(edge.label)}</text>
+    <ol class="detail-list">
+      ${details.map((detail) => `<li>${escapeHtml(detail)}</li>`).join("")}
+    </ol>
+  `;
+}
+
+function renderDataflow(analysis, state) {
+  const expandedIds = state.expandedModules || [];
+  const expandableIds = analysis.structure.nodes
+    .filter((node) => node.id !== analysis.structure.rootId && node.details?.length > 0)
+    .map((node) => node.id);
+  const expandedNodes = expandedIds
+    .map((id) => analysis.structure.nodes.find((node) => node.id === id))
+    .filter(Boolean);
+  return `
+    <div class="dataflow-workbench">
+      <section class="dataflow-stage">
+        <div class="stage-header">
+          <div>
+            <p class="eyebrow">Inference order</p>
+            <h3>${escapeHtml(analysis.diagram.title)}</h3>
+          </div>
+          <span>+ expands module anatomy</span>
+        </div>
+        ${renderArchitectureDiagram(analysis.diagram, state.selectedId, {
+          expandableIds,
+          expandedIds
+        })}
+      </section>
+      <aside class="inference-steps">
+        ${analysis.dataflow.edges.map((edge, index) => renderFlowStep(edge, index)).join("")}
+      </aside>
+      ${expandedNodes.length > 0
+        ? `<section class="dataflow-expansions">${expandedNodes.map((node) => renderModuleDetailCard(node, analysis)).join("")}</section>`
+        : ""}
+    </div>
+  `;
+}
+
+function renderFlowStep(edge, index) {
+  return `
+    <article class="flow-step">
+      <span>${escapeHtml(String(index + 1).padStart(2, "0"))}</span>
+      <strong>${escapeHtml(edge.from)} -> ${escapeHtml(edge.to)}</strong>
+      <small>${escapeHtml(edge.label)}</small>
+    </article>
   `;
 }
 
 function renderWeights(analysis) {
   const groups = Object.entries(analysis.weights.groups);
   const tensors = analysis.weights.tensors.slice(0, 16);
+  const parameterRows = Object.entries(analysis.weights.parameterBreakdown || {});
+  const byteRows = analysis.weights.parameterByteBreakdown || {};
+  const weightFiles = analysis.storage.files.filter((file) =>
+    ["safetensors", "gguf", "pytorch-bin"].includes(file.format)
+  );
+  const activeWeightBytes = weightFiles
+    .filter((file) => file.active !== false)
+    .reduce((total, file) => total + file.size, 0);
+  const hasTensorRows = tensors.length > 0;
+  const hasExternalSummary = analysis.weights.externalParameters > 0;
+  const hasWeightFiles = weightFiles.length > 0;
   return `
     <div class="split-view">
       <section class="bars-panel">
-        ${groups.length === 0 ? `<p class="quiet">No tensor metadata loaded.</p>` : groups.map(([group, count]) => renderBar(group, count, analysis.weights.tensors.length)).join("")}
+        ${hasExternalSummary ? renderValueRow("HF parameters", formatNumber(analysis.weights.externalParameters)) : ""}
+        ${analysis.weights.externalWeightBytes > 0 ? renderValueRow("Estimated weight bytes", formatBytes(analysis.weights.externalWeightBytes)) : ""}
+        ${!hasExternalSummary && hasWeightFiles ? renderValueRow("Weight files", weightFiles.length) : ""}
+        ${!hasExternalSummary && hasWeightFiles ? renderValueRow("Active weight bytes", formatBytes(activeWeightBytes)) : ""}
+        ${parameterRows.length > 0
+          ? parameterRows.map(([dtype, count]) => renderBar(dtype, count, analysis.weights.externalParameters, formatNumber(count))).join("")
+          : groups.map(([group, count]) => renderBar(group, count, analysis.weights.tensors.length)).join("")}
+        ${analysis.storage.shards?.length > 0 ? renderValueRow("Indexed shards", analysis.storage.shards.length) : ""}
+        ${!hasExternalSummary && groups.length === 0 && !hasWeightFiles ? `<p class="quiet">No tensor metadata loaded.</p>` : ""}
       </section>
       <section class="table-panel">
-        <table>
-          <thead><tr><th>Tensor</th><th>DType</th><th>Shape</th><th>Params</th><th>Source</th></tr></thead>
-          <tbody>
-            ${tensors.map(renderTensorRow).join("")}
-          </tbody>
-        </table>
+        ${hasTensorRows
+          ? `
+            <table>
+              <thead><tr><th>Tensor</th><th>DType</th><th>Shape</th><th>Params</th><th>Source</th></tr></thead>
+              <tbody>
+                ${tensors.map(renderTensorRow).join("")}
+              </tbody>
+            </table>
+          `
+          : parameterRows.length > 0
+            ? renderWeightSummaryTable(parameterRows, byteRows)
+            : renderWeightFileTable(weightFiles)}
       </section>
     </div>
+  `;
+}
+
+function renderWeightSummaryTable(parameterRows, byteRows) {
+  if (parameterRows.length === 0) {
+    return `<div class="empty-state"><strong>No weight metadata</strong><span>Load safetensors headers, an index file, or Hugging Face parameter metadata.</span></div>`;
+  }
+  return `
+    <table>
+      <thead><tr><th>DType</th><th>Parameters</th><th>Estimated Bytes</th><th>Source</th></tr></thead>
+      <tbody>
+        ${parameterRows
+          .map(
+            ([dtype, count]) => `
+              <tr>
+                <td>${escapeHtml(dtype)}</td>
+                <td>${escapeHtml(formatNumber(count))}</td>
+                <td>${escapeHtml(formatBytes(byteRows[dtype] || 0))}</td>
+                <td>huggingface</td>
+              </tr>
+            `
+          )
+          .join("")}
+      </tbody>
+    </table>
+    <p class="quiet table-note">Per-tensor shape rows require safetensors headers or index metadata. This summary comes from repository parameter metadata.</p>
+  `;
+}
+
+function renderWeightFileTable(weightFiles) {
+  if (weightFiles.length === 0) {
+    return `<div class="empty-state"><strong>No weight metadata</strong><span>Load safetensors headers, an index file, or Hugging Face parameter metadata.</span></div>`;
+  }
+  return `
+    <table>
+      <thead><tr><th>Weight file</th><th>Format</th><th>Size</th><th>Use</th></tr></thead>
+      <tbody>
+        ${weightFiles
+          .map(
+            (file) => `
+              <tr class="selectable-row" data-select-id="file:${escapeHtml(encodeURIComponent(file.path))}">
+                <td>${escapeHtml(file.path)}</td>
+                <td>${escapeHtml(file.format)}</td>
+                <td>${escapeHtml(formatBytes(file.size))}</td>
+                <td>${escapeHtml(file.active === false ? "alternative" : "active")}</td>
+              </tr>
+            `
+          )
+          .join("")}
+      </tbody>
+    </table>
+    <p class="quiet table-note">Tensor shapes were not available from headers or indexes, so this view falls back to checkpoint file metadata.</p>
   `;
 }
 
@@ -316,6 +465,12 @@ function renderStorage(analysis) {
   return `
     <div class="split-view">
       <section class="bars-panel">
+        ${renderValueRow("Basis", analysis.storage.totalBasis)}
+        ${analysis.storage.activeFileTotalBytes !== analysis.storage.fileTotalBytes ? renderValueRow("Active footprint", formatBytes(analysis.storage.activeFileTotalBytes)) : ""}
+        ${renderValueRow("All repo files", formatBytes(analysis.storage.fileTotalBytes))}
+        ${analysis.storage.alternativeBytes > 0 ? renderValueRow("Alternative artifacts", formatBytes(analysis.storage.alternativeBytes)) : ""}
+        ${analysis.storage.repositoryStorageBytes > 0 ? renderValueRow("Repo usedStorage", formatBytes(analysis.storage.repositoryStorageBytes)) : ""}
+        ${analysis.storage.missingSizeCount > 0 ? renderValueRow("Missing sizes", analysis.storage.missingSizeCount) : ""}
         ${formats.map(([format, details]) => renderBar(format, details.bytes, analysis.storage.totalBytes, formatBytes(details.bytes))).join("")}
         ${renderValueRow("Quantization", analysis.storage.quantization)}
         ${analysis.storage.gguf ? renderValueRow("GGUF tensors", analysis.storage.gguf.tensorCount) : ""}
@@ -324,7 +479,7 @@ function renderStorage(analysis) {
       </section>
       <section class="table-panel">
         <table>
-          <thead><tr><th>File</th><th>Format</th><th>Size</th></tr></thead>
+          <thead><tr><th>File</th><th>Format</th><th>Size</th><th>Use</th></tr></thead>
           <tbody>
             ${analysis.storage.files.slice(0, 18).map(renderFileRow).join("")}
           </tbody>
@@ -391,6 +546,7 @@ function renderDetail(analysis, selectedId) {
       ${renderValueRow("File", file.path)}
       ${renderValueRow("Format", file.format)}
       ${renderValueRow("Size", formatBytes(file.size))}
+      ${renderValueRow("Use", file.active === false ? "alternative artifact" : "active footprint")}
     `;
   }
   const shard = selectedId?.startsWith("shard:") ? findShard(analysis, selectedId) : undefined;
@@ -478,6 +634,7 @@ function renderFileRow(file) {
       <td>${escapeHtml(file.path)}</td>
       <td>${escapeHtml(file.format)}</td>
       <td>${escapeHtml(formatBytes(file.size))}</td>
+      <td>${escapeHtml(file.active === false ? "alternative" : "active")}</td>
     </tr>
   `;
 }
