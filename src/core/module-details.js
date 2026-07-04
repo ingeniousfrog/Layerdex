@@ -17,6 +17,11 @@ export function defaultNodeDetails(item, anatomy) {
       "Stores past keys and values for token-by-token inference.",
       "Memory grows with batch size, context length, and layer count."
     ],
+    clip: [
+      "Encodes prompt tokens into pooled text conditioning.",
+      "Often provides global style and prompt-level guidance.",
+      "Feeds the denoiser through the conditioning path."
+    ],
     conditioning: [
       "Prompt text is tokenized for CLIP and/or T5 encoders.",
       "Text embeddings condition every denoising step.",
@@ -24,8 +29,14 @@ export function defaultNodeDetails(item, anatomy) {
     ],
     dit: [
       "Main inference module for FLUX/DiT-style diffusion pipelines.",
+      "FLUX runs dual-stream blocks before merging into single-stream blocks.",
       "Consumes latent state, timestep/sigma, and text embeddings.",
       "Predicts noise or velocity for the scheduler update."
+    ],
+    "dual-block": [
+      "Processes image latent tokens and text tokens as separate streams.",
+      "Uses joint attention to let both streams exchange conditioning.",
+      "Feeds the merged representation into the single-stream stage."
     ],
     embedding: [
       "Looks up token ids in the embedding table.",
@@ -38,6 +49,15 @@ export function defaultNodeDetails(item, anatomy) {
     head: [
       "Projects hidden states to logits or output channels.",
       "Sampling or decoding happens after this projection."
+    ],
+    input: [
+      "Represents user-provided or generated inputs to the pipeline.",
+      "Values are shown as semantic flow nodes rather than loaded tensors."
+    ],
+    latent: [
+      "Carries the compressed image state through the denoising loop.",
+      "Starts as noise and is updated step-by-step by the scheduler.",
+      "The final latent is decoded into pixels by the VAE."
     ],
     lora: [
       "Stores low-rank A/B projection deltas.",
@@ -58,6 +78,16 @@ export function defaultNodeDetails(item, anatomy) {
       "Calls the denoiser at each step with latent state and conditioning.",
       "Updates the latent after each prediction until final VAE decode."
     ],
+    "single-block": [
+      "Runs after FLUX merges image and text streams into one sequence.",
+      "Refines the joint representation before output projection.",
+      "Its depth comes from num_single_layers when available."
+    ],
+    t5: [
+      "Encodes prompt tokens into sequence-level text embeddings.",
+      "Provides detailed token context for FLUX and DiT-style denoisers.",
+      "Feeds conditioning into each denoising step."
+    ],
     targets: [
       "Names the base modules touched by an adapter.",
       "Coverage is verified from config or inferred from tensor names."
@@ -71,6 +101,11 @@ export function defaultNodeDetails(item, anatomy) {
       "Maps final latent state back into image space.",
       "Runs decoder blocks and upsampling layers.",
       "Produces RGB pixels after denoising is complete."
+    ],
+    "vae-decoder": [
+      "Converts latent channels into image-space feature maps.",
+      "Applies decoder blocks before final upsampling.",
+      "Produces the pixel path used by the output image."
     ],
     weights: [
       "Tensor metadata comes from safetensors headers or index files.",

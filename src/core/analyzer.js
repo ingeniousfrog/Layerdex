@@ -1,4 +1,4 @@
-import { buildArchitectureDiagram } from "./diagram.js";
+import { buildArchitectureDiagram, buildModuleAnatomyDiagram } from "./diagram.js";
 import { formatForPath } from "./file-format.js";
 import { readGgufFile } from "./gguf.js";
 import { defaultNodeDetails } from "./module-details.js";
@@ -20,6 +20,7 @@ const CONFIG_FACT_KEYS = [
   "num_hidden_layers",
   "num_key_value_heads",
   "num_layers",
+  "num_single_layers",
   "peft_type",
   "r",
   "target_modules",
@@ -394,6 +395,17 @@ function inferAnatomy(files, configEntries, tensorEntries, quantization, adapter
     .toLowerCase();
   const hasUnet = searchable.includes("unet");
   const hasVae = searchable.includes("vae") || searchable.includes("autoencoderkl");
+  const hasClip =
+    searchable.includes("cliptextmodel") ||
+    searchable.includes("text_encoder/config") ||
+    searchable.includes("text_encoder.") ||
+    searchable.includes("clip");
+  const hasT5 =
+    searchable.includes("t5encodermodel") ||
+    searchable.includes("text_encoder_2/config") ||
+    searchable.includes("text_encoder_2.") ||
+    searchable.includes("t5");
+  const hasScheduler = searchable.includes("scheduler") || searchable.includes("flowmatch") || searchable.includes("eul");
   const hasDit =
     searchable.includes("dit") ||
     searchable.includes("fluxpipeline") ||
@@ -401,6 +413,12 @@ function inferAnatomy(files, configEntries, tensorEntries, quantization, adapter
     searchable.includes("transformer2d") ||
     searchable.includes("sd3transformer") ||
     searchable.includes("transformer/");
+  const isFlux =
+    searchable.includes("fluxpipeline") ||
+    searchable.includes("fluxtransformer") ||
+    searchable.includes("fluxtransformer2dmodel") ||
+    searchable.includes("black-forest-labs/flux") ||
+    searchable.includes("flux1");
   const hasMoe = searchable.includes("num_experts") || searchable.includes("experts");
   const hasTransformer =
     searchable.includes("llama") ||
@@ -423,13 +441,17 @@ function inferAnatomy(files, configEntries, tensorEntries, quantization, adapter
 
   if (hasUnet || hasVae || hasDit) {
     return {
-      architecture: "Diffusion Pipeline",
+      architecture: isFlux ? "FLUX Diffusion Pipeline" : "Diffusion Pipeline",
       modality: "image",
       family: "diffusion",
       evidence: "Diffusers-style component configs or tensor names",
+      isFlux,
+      hasClip,
+      hasT5,
       hasUnet,
       hasVae,
-      hasDit
+      hasDit,
+      hasScheduler
     };
   }
 
@@ -542,6 +564,16 @@ function buildWeights(tensors, source) {
 function buildStructure(anatomy, configEntries, weights, adapter) {
   const layers = numberFromConfigs(configEntries, ["num_hidden_layers", "num_layers"]);
   const hiddenSize = numberFromConfigs(configEntries, ["hidden_size"]);
+  const clipConfig = findConfigEntry(configEntries, ["cliptextmodel", "text_encoder/config"]);
+  const t5Config = findConfigEntry(configEntries, ["t5encodermodel", "text_encoder_2/config"]);
+  const transformerConfig = findConfigEntry(configEntries, ["fluxtransformer", "sd3transformer", "transformer/config"]);
+  const vaeConfig = findConfigEntry(configEntries, ["autoencoderkl", "vae/config"]);
+  const fluxBlockMetrics = anatomy.isFlux
+    ? {
+        dualBlocks: transformerConfig?.json.num_layers,
+        singleBlocks: transformerConfig?.json.num_single_layers
+      }
+    : {};
   const transformerNodes = [
     node("embeddings", "Token embeddings", "embedding", "verified", "config", { hiddenSize }),
     node("blocks", `${layers || "N"} decoder blocks`, "block-group", "inferred", "rule", { layers }),
@@ -557,11 +589,36 @@ function buildStructure(anatomy, configEntries, weights, adapter) {
       ]
     : [];
   const diffusionNodes = [
+    node("prompt", "Prompt input", "input", "inferred", "rule"),
+    anatomy.hasClip
+      ? node("clip", "CLIP text encoder", "clip", statusForConfig(clipConfig), sourceForConfig(clipConfig), {
+          hiddenSize: clipConfig?.json.hidden_size,
+          layers: clipConfig?.json.num_hidden_layers || clipConfig?.json.num_layers
+        })
+      : undefined,
+    anatomy.hasT5
+      ? node("t5", "T5 text encoder", "t5", statusForConfig(t5Config), sourceForConfig(t5Config), {
+          hiddenSize: t5Config?.json.d_model || t5Config?.json.hidden_size,
+          layers: t5Config?.json.num_layers || t5Config?.json.num_hidden_layers
+        })
+      : undefined,
+    node("latent", "Latent state", "latent", "inferred", "rule", {
+      channels: numberFromConfigs(configEntries, ["latent_channels"])
+    }),
     anatomy.hasUnet ? node("unet", "U-Net denoiser", "unet", "verified", "config") : undefined,
-    anatomy.hasVae ? node("vae", "VAE latent codec", "vae", "verified", "config") : undefined,
-    anatomy.hasDit ? node("dit", "Diffusion transformer", "dit", "verified", "config") : undefined,
+    anatomy.hasVae
+      ? node("vae", "VAE latent codec", "vae", statusForConfig(vaeConfig), sourceForConfig(vaeConfig), {
+          latentChannels: vaeConfig?.json.latent_channels
+        })
+      : undefined,
+    anatomy.hasDit
+      ? node("dit", anatomy.isFlux ? "Flux transformer" : "Diffusion transformer", "dit", statusForConfig(transformerConfig), sourceForConfig(transformerConfig), {
+          layers: transformerConfig?.json.num_layers || transformerConfig?.json.num_hidden_layers,
+          ...fluxBlockMetrics
+        })
+      : undefined,
     node("conditioning", "Conditioning inputs", "conditioning", "inferred", "rule"),
-    node("scheduler", "Scheduler loop", "scheduler", "inferred", "rule")
+    node("scheduler", "Scheduler loop", "scheduler", anatomy.hasScheduler ? "verified" : "inferred", anatomy.hasScheduler ? "config" : "rule")
   ].filter(Boolean);
   const unknownNodes = [
     node("files", "Model files", "files", "verified", "filesystem"),
@@ -596,7 +653,8 @@ function buildStructure(anatomy, configEntries, weights, adapter) {
       ...children
     ].map((item) => ({
       ...item,
-      details: item.details?.length ? item.details : defaultNodeDetails(item, anatomy)
+      details: item.details?.length ? item.details : defaultNodeDetails(item, anatomy),
+      diagram: buildModuleAnatomyDiagram(item, anatomy)
     }));
 
   return {
@@ -619,35 +677,65 @@ function buildDataflow(anatomy, adapter) {
   }
 
   if (anatomy.family === "diffusion") {
-    const coreNode = anatomy.hasDit ? "dit" : "unet";
+    const coreNode = anatomy.hasDit ? "dit" : anatomy.hasUnet ? "unet" : "decoder";
+    const denoiserOutput = anatomy.isFlux ? "dit-output" : coreNode;
+    const textEdges = [
+      anatomy.hasClip ? { from: "prompt", to: "clip", label: "tokens" } : undefined,
+      anatomy.hasT5 ? { from: "prompt", to: "t5", label: "tokens" } : undefined,
+      anatomy.hasClip ? { from: "clip", to: "conditioning", label: "pooled text embedding" } : undefined,
+      anatomy.hasT5 ? { from: "t5", to: "conditioning", label: "sequence text embedding" } : undefined
+    ].filter(Boolean);
     return {
-      nodes: ["prompt", "clip", "t5", "latent", "timesteps", "scheduler", "dit", "unet", "latent-update", "vae", "image"].filter(
+      nodes: [
+        "prompt",
+        "clip",
+        "t5",
+        "conditioning",
+        "latent",
+        "timesteps",
+        "scheduler",
+        "dit",
+        "dual-blocks",
+        "single-blocks",
+        "dit-output",
+        "unet",
+        "latent-update",
+        "vae",
+        "decoder",
+        "image"
+      ].filter(
         (id) =>
           id === "prompt" ||
-          id === "clip" ||
-          id === "t5" ||
+          id === "conditioning" ||
           id === "latent" ||
           id === "timesteps" ||
           id === "scheduler" ||
           id === "latent-update" ||
           id === "image" ||
+          (id === "clip" && anatomy.hasClip) ||
+          (id === "t5" && anatomy.hasT5) ||
           (id === "dit" && anatomy.hasDit) ||
+          (id === "dual-blocks" && anatomy.isFlux) ||
+          (id === "single-blocks" && anatomy.isFlux) ||
+          (id === "dit-output" && anatomy.isFlux) ||
           (id === "unet" && anatomy.hasUnet) ||
-          (id === "vae" && anatomy.hasVae)
+          (id === "vae" && anatomy.hasVae) ||
+          (id === "decoder" && !anatomy.hasVae)
       ),
       edges: [
-        { from: "prompt", to: "clip", label: "tokens" },
-        { from: "prompt", to: "t5", label: "tokens" },
-        { from: "clip", to: coreNode, label: "pooled text embedding" },
-        { from: "t5", to: coreNode, label: "sequence text embedding" },
+        ...textEdges,
+        { from: "conditioning", to: coreNode, label: "conditioning" },
         { from: "latent", to: "scheduler", label: "initial noise" },
         { from: "timesteps", to: "scheduler", label: "schedule" },
         { from: "scheduler", to: coreNode, label: "latent + timestep" },
-        { from: coreNode, to: "latent-update", label: "noise / velocity prediction" },
+        anatomy.isFlux ? { from: coreNode, to: "dual-blocks", label: "image + text streams" } : undefined,
+        anatomy.isFlux ? { from: "dual-blocks", to: "single-blocks", label: "merged sequence" } : undefined,
+        anatomy.isFlux ? { from: "single-blocks", to: "dit-output", label: "final transformer states" } : undefined,
+        { from: denoiserOutput, to: "latent-update", label: "noise / velocity prediction" },
         { from: "latent-update", to: "scheduler", label: "updated latent" },
         anatomy.hasDit && anatomy.hasUnet ? { from: "dit", to: "unet", label: "latent tokens" } : undefined,
-        anatomy.hasVae ? { from: "latent-update", to: "vae", label: "final latent" } : undefined,
-        anatomy.hasVae ? { from: "vae", to: "image", label: "decoded pixels" } : undefined
+        { from: "latent-update", to: anatomy.hasVae ? "vae" : "decoder", label: "final latent" },
+        { from: anatomy.hasVae ? "vae" : "decoder", to: "image", label: "decoded pixels" }
       ].filter(Boolean)
     };
   }
@@ -718,6 +806,22 @@ function fact({ key, label, source, status, value, evidence }) {
 
 function node(id, label, kind, status, source, metrics = {}, details = []) {
   return { id, label, kind, status, source, metrics, details };
+}
+
+function findConfigEntry(configEntries, matchers) {
+  return configEntries.find((entry) => {
+    const path = entry.path.toLowerCase();
+    const json = JSON.stringify(entry.json).toLowerCase();
+    return matchers.some((matcher) => path.includes(matcher) || json.includes(matcher));
+  });
+}
+
+function statusForConfig(configEntry) {
+  return configEntry ? "verified" : "inferred";
+}
+
+function sourceForConfig(configEntry) {
+  return configEntry ? "config" : "rule";
 }
 
 function factMap(analysis, source) {

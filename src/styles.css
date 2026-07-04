@@ -416,6 +416,15 @@ th {
   font-size: 1.12rem;
 }
 
+.module-focus .module-diagram,
+.module-dialog .module-diagram {
+  min-width: 0;
+}
+
+.module-dialog .architecture-svg.compact {
+  max-height: 340px;
+}
+
 .dataflow-svg {
   display: block;
   width: min(100%, 1080px);

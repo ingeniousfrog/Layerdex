@@ -100,7 +100,7 @@ function renderOverview(analysis, selectedId) {
           </div>
           <span>${escapeHtml(analysis.overview.modality)} / ${escapeHtml(analysis.overview.precision)}</span>
         </div>
-        ${renderArchitectureDiagram(analysis.diagram, selectedId)}
+        ${renderArchitectureDiagram(analysis.diagram, selectedId, { compact: true })}
       </section>
       <aside class="overview-sidecar">
         <section class="module-summary">
@@ -149,11 +149,20 @@ function renderAnatomy(analysis, state) {
   `;
 }
 
-function renderArchitectureDiagram(diagram, selectedId, options = {}) {
-  const width = 1120;
+export function renderArchitectureDiagram(diagram, selectedId, options = {}) {
+  const width = diagram.width || 1120;
   const laneHeight = 116;
-  const height = Math.max(360, 58 + diagram.lanes.length * laneHeight);
+  const height = diagram.height || Math.max(360, 58 + diagram.lanes.length * laneHeight);
   const expandableIds = new Set(options.expandableIds || []);
+  const interactive = options.interactive !== false;
+  const svgClass = [
+    "architecture-svg",
+    diagram.variant ? `diagram-${diagram.variant}` : "",
+    options.compact ? "compact" : "",
+    interactive ? "" : "static"
+  ]
+    .filter(Boolean)
+    .join(" ");
   const laneYById = Object.fromEntries(
     diagram.lanes.map((lane, index) => [lane.id, 42 + index * laneHeight])
   );
@@ -175,19 +184,30 @@ function renderArchitectureDiagram(diagram, selectedId, options = {}) {
   );
 
   return `
-    <svg class="architecture-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(diagram.title)}">
+    <svg class="${svgClass}" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(diagram.title)}">
       <defs>
         <marker id="archArrow" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto">
           <path d="M0,0 L0,6 L8,3 z"></path>
         </marker>
       </defs>
       ${diagram.lanes.map((lane) => renderDiagramLane(lane, laneYById[lane.id], width)).join("")}
+      ${(diagram.regions || []).map(renderDiagramRegion).join("")}
       ${diagram.edges.map((edge) => renderDiagramEdge(edge, positionedNodes)).join("")}
       ${Object.values(positionedNodes).map((node) => renderDiagramNode(node, selectedId, {
         expandable: expandableIds.has(node.id),
-        expanded: options.expandedIds?.includes(node.id)
+        expanded: options.expandedIds?.includes(node.id),
+        interactive
       })).join("")}
     </svg>
+  `;
+}
+
+function renderDiagramRegion(region) {
+  return `
+    <g class="diagram-region ${escapeHtml(region.tone || "blue")} ${region.dashed ? "dashed" : ""}" transform="translate(${region.x} ${region.y})">
+      <rect width="${region.width}" height="${region.height}" rx="${region.rx || 12}"></rect>
+      <text x="${region.labelX || 16}" y="${region.labelY || 24}">${escapeHtml(region.label)}</text>
+    </g>
   `;
 }
 
@@ -203,12 +223,13 @@ function renderDiagramLane(lane, y, width) {
 function renderDiagramNode(node, selectedId, options = {}) {
   const nodeWidth = diagramNodeWidth(node);
   const nodeHeight = node.role === "module" ? 58 : 46;
+  const selectionAttribute = options.interactive ? `data-select-id="${escapeHtml(node.id)}"` : "";
   return `
-    <g class="diagram-node ${escapeHtml(node.role)} ${node.id === selectedId ? "selected" : ""}" data-select-id="${escapeHtml(node.id)}" transform="translate(${node.x} ${node.y})">
+    <g class="diagram-node ${escapeHtml(node.role)} ${node.id === selectedId ? "selected" : ""}" ${selectionAttribute} transform="translate(${node.x} ${node.y})">
       <rect x="${-nodeWidth / 2}" y="${-nodeHeight / 2}" width="${nodeWidth}" height="${nodeHeight}" rx="11"></rect>
       <text class="node-title" y="-5" text-anchor="middle">${escapeHtml(node.label)}</text>
       <text class="node-meta" y="17" text-anchor="middle">${escapeHtml(node.kind)}</text>
-      ${options.expandable ? renderDiagramExpander(node.id, nodeWidth, options.expanded) : ""}
+      ${options.interactive && options.expandable ? renderDiagramExpander(node.id, nodeWidth, options.expanded) : ""}
     </g>
   `;
 }
@@ -236,7 +257,7 @@ function renderDiagramEdge(edge, nodes) {
   const controlY = from.y === to.y ? from.y - 24 - loopOffset : (from.y + to.y) / 2 - loopOffset;
   return `
     <path class="diagram-edge" d="M ${startX} ${from.y} C ${midX} ${controlY}, ${midX} ${controlY}, ${endX} ${to.y}" marker-end="url(#archArrow)"></path>
-    <text class="diagram-edge-label" x="${midX}" y="${controlY - 7}" text-anchor="middle">${escapeHtml(edge.label || "")}</text>
+    ${edge.label ? `<text class="diagram-edge-label" x="${midX}" y="${controlY - 7}" text-anchor="middle">${escapeHtml(edge.label)}</text>` : ""}
   `;
 }
 
@@ -263,9 +284,14 @@ function renderModuleFocus(analysis, selected) {
       <div class="module-chip">${escapeHtml(selected.kind)}</div>
       <h3>${escapeHtml(selected.label)}</h3>
       <p>${escapeHtml(selected.source)} / ${escapeHtml(selected.status)}</p>
-      <div class="module-glyph" aria-hidden="true">
-        <span></span><span></span><span></span>
-      </div>
+      ${selected.diagram
+        ? `<div class="module-diagram">${renderArchitectureDiagram(selected.diagram, undefined, {
+            compact: true,
+            interactive: false
+          })}</div>`
+        : `<div class="module-glyph" aria-hidden="true">
+            <span></span><span></span><span></span>
+          </div>`}
       <div class="module-stats">
         ${Object.entries(selected.metrics || {}).map(([key, value]) => renderValueRow(key, value || "unknown")).join("")}
         ${diagramNode ? renderValueRow("Diagram lane", diagramNode.lane) : ""}
@@ -300,6 +326,10 @@ function renderModuleDetailCard(node, analysis) {
         <small>${escapeHtml(node.source)} / ${escapeHtml(node.status)}</small>
       </div>
       ${renderDetailList(node.details || [])}
+      ${node.diagram ? `<div class="module-diagram compact-card">${renderArchitectureDiagram(node.diagram, undefined, {
+        compact: true,
+        interactive: false
+      })}</div>` : ""}
       <div class="module-stats compact">
         ${Object.entries(node.metrics || {}).map(([key, value]) => renderValueRow(key, value || "unknown")).join("")}
         ${renderValueRow("Connected flows", relatedEdges.length)}

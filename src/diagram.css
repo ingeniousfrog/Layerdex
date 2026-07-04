@@ -51,6 +51,72 @@
   background: #ffffff;
 }
 
+.architecture-svg.compact {
+  max-height: 520px;
+}
+
+.architecture-svg.static .diagram-node {
+  cursor: default;
+}
+
+.architecture-svg.diagram-flux .diagram-lane rect {
+  stroke-dasharray: 0;
+}
+
+.architecture-svg.diagram-flux .diagram-node.module rect {
+  stroke-width: 1.75;
+}
+
+.architecture-svg.diagram-flux {
+  background: #fffefd;
+}
+
+.architecture-svg.diagram-flux:not(.compact) {
+  width: 1680px;
+  max-width: none;
+}
+
+.dataflow-stage {
+  overflow-x: auto;
+}
+
+.diagram-region rect {
+  fill: rgba(53, 106, 168, 0.08);
+  stroke: rgba(36, 36, 36, 0.16);
+  stroke-width: 1.2;
+}
+
+.diagram-region.violet rect {
+  fill: rgba(111, 99, 167, 0.14);
+}
+
+.diagram-region.rose rect {
+  fill: rgba(217, 99, 149, 0.18);
+}
+
+.diagram-region.amber rect {
+  fill: rgba(216, 162, 41, 0.17);
+}
+
+.diagram-region.yellow rect {
+  fill: rgba(232, 218, 83, 0.22);
+}
+
+.diagram-region.green rect {
+  fill: rgba(22, 143, 115, 0.17);
+}
+
+.diagram-region.dashed rect {
+  stroke-dasharray: 4 4;
+}
+
+.diagram-region text {
+  fill: var(--muted);
+  font-family: Menlo, Consolas, monospace;
+  font-size: 13px;
+  font-weight: 800;
+}
+
 .diagram-lane rect {
   fill: rgba(111, 99, 167, 0.07);
   stroke: rgba(36, 36, 36, 0.12);
@@ -233,6 +299,27 @@
 
 .module-glyph span:nth-child(3) {
   background: rgba(22, 143, 115, 0.28);
+}
+
+.module-diagram {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfbfa;
+}
+
+.module-diagram .architecture-svg {
+  border-color: rgba(36, 36, 36, 0.1);
+  box-shadow: none;
+}
+
+.module-diagram.compact-card {
+  padding: 0;
+  border: 0;
+  background: transparent;
 }
 
 .dataflow-workbench {

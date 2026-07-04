@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { analyzeModelPackage, diffAnalyses } from "../src/core/analyzer.js";
+import { renderArchitectureDiagram } from "../src/ui/render.js";
 
 function safetensorsFixture(tensors) {
   const header = JSON.stringify(tensors);
@@ -55,6 +56,14 @@ function writeUint64(value) {
   const bytes = Buffer.alloc(8);
   bytes.writeBigUInt64LE(BigInt(value));
   return bytes;
+}
+
+function assertGraphEdgesResolve(graph) {
+  const nodeIds = new Set(graph.nodes.map((node) => (typeof node === "string" ? node : node.id)));
+  for (const edge of graph.edges) {
+    assert.ok(nodeIds.has(edge.from), `missing edge source ${edge.from}`);
+    assert.ok(nodeIds.has(edge.to), `missing edge target ${edge.to}`);
+  }
 }
 
 test("analyzes a local transformer package from config and safetensors metadata", () => {
@@ -138,6 +147,16 @@ test("detects diffusion anatomy across U-Net, VAE, and DiT-style configs", () =>
         text: JSON.stringify({ _class_name: "AutoencoderKL", latent_channels: 4 })
       },
       {
+        path: "text_encoder/config.json",
+        size: 120,
+        text: JSON.stringify({ _class_name: "CLIPTextModel" })
+      },
+      {
+        path: "text_encoder_2/config.json",
+        size: 120,
+        text: JSON.stringify({ _class_name: "T5EncoderModel" })
+      },
+      {
         path: "transformer/config.json",
         size: 140,
         text: JSON.stringify({ _class_name: "SD3Transformer2DModel", num_layers: 24 })
@@ -150,7 +169,10 @@ test("detects diffusion anatomy across U-Net, VAE, and DiT-style configs", () =>
   assert.ok(analysis.structure.nodes.some((node) => node.kind === "unet"));
   assert.ok(analysis.structure.nodes.some((node) => node.kind === "vae"));
   assert.ok(analysis.structure.nodes.some((node) => node.kind === "dit"));
-  assert.ok(analysis.dataflow.edges.some((edge) => edge.from === "clip" && edge.to === "dit"));
+  assert.ok(analysis.structure.nodes.some((node) => node.kind === "clip"));
+  assert.ok(analysis.structure.nodes.some((node) => node.kind === "t5"));
+  assert.ok(analysis.dataflow.edges.some((edge) => edge.from === "clip" && edge.to === "conditioning"));
+  assert.ok(analysis.dataflow.edges.some((edge) => edge.from === "conditioning" && edge.to === "dit"));
   assert.ok(analysis.dataflow.edges.some((edge) => edge.from === "scheduler" && edge.to === "dit"));
 });
 
@@ -166,39 +188,88 @@ test("builds an overview architecture diagram for diffusion pipelines", () => {
       {
         path: "text_encoder/config.json",
         size: 120,
-        text: JSON.stringify({ _class_name: "CLIPTextModel" })
+        text: JSON.stringify({ _class_name: "CLIPTextModel", hidden_size: 768, num_hidden_layers: 12 })
       },
       {
         path: "text_encoder_2/config.json",
         size: 120,
-        text: JSON.stringify({ _class_name: "T5EncoderModel" })
+        text: JSON.stringify({ _class_name: "T5EncoderModel", d_model: 4096, num_layers: 24 })
       },
       {
         path: "transformer/config.json",
         size: 140,
-        text: JSON.stringify({ _class_name: "FluxTransformer2DModel", num_layers: 57 })
+        text: JSON.stringify({ _class_name: "FluxTransformer2DModel", num_layers: 19, num_single_layers: 38 })
+      },
+      {
+        path: "scheduler/scheduler_config.json",
+        size: 80,
+        text: JSON.stringify({ _class_name: "FlowMatchEulerDiscreteScheduler" })
       },
       {
         path: "vae/config.json",
         size: 100,
-        text: JSON.stringify({ _class_name: "AutoencoderKL" })
+        text: JSON.stringify({ _class_name: "AutoencoderKL", latent_channels: 16 })
       }
     ]
   });
 
   assert.ok(analysis.diagram);
-  assert.ok(analysis.diagram.lanes.some((lane) => lane.id === "prepare"));
-  assert.ok(analysis.diagram.lanes.some((lane) => lane.id === "denoise"));
+  assert.equal(analysis.overview.architecture, "FLUX Diffusion Pipeline");
+  assert.equal(analysis.diagram.variant, "flux");
+  assert.ok(analysis.diagram.regions.some((region) => region.label === "Prepare"));
+  assert.ok(analysis.diagram.regions.some((region) => region.label === "Denoise"));
+  assert.ok(analysis.diagram.regions.some((region) => region.label === "Flux"));
+  assert.ok(analysis.diagram.regions.some((region) => region.label === "DoubleStreamBlock x19"));
+  assert.ok(analysis.diagram.regions.some((region) => region.label === "SingleStreamBlock x38" && region.dashed));
   assert.ok(analysis.diagram.nodes.some((node) => node.id === "prompt" && node.role === "input"));
-  assert.ok(analysis.diagram.nodes.some((node) => node.id === "dit" && node.kind === "dit"));
-  assert.ok(analysis.diagram.nodes.some((node) => node.id === "latent-update" && node.kind === "scheduler"));
-  assert.ok(analysis.diagram.edges.some((edge) => edge.from === "dit" && edge.label === "noise / velocity prediction"));
+  assert.ok(analysis.diagram.nodes.some((node) => node.id === "clip" && node.kind === "clip"));
+  assert.ok(analysis.diagram.nodes.some((node) => node.id === "t5" && node.kind === "t5"));
+  assert.ok(analysis.diagram.nodes.some((node) => node.id === "dit" && node.label === "Flux Transformer"));
+  assert.ok(analysis.diagram.nodes.some((node) => node.id === "dual-blocks" && node.label === "Dual blocks x19"));
+  assert.ok(analysis.diagram.nodes.some((node) => node.id === "img-mod" && node.label === "img mod"));
+  assert.ok(analysis.diagram.nodes.some((node) => node.id === "txt-mod" && node.label === "txt mod"));
+  assert.ok(analysis.diagram.nodes.some((node) => node.id === "double-attn" && node.kind === "attention"));
+  assert.ok(analysis.diagram.nodes.some((node) => node.id === "merge-streams" && node.label === "concat img + txt"));
+  assert.ok(analysis.diagram.nodes.some((node) => node.id === "single-blocks" && node.label === "Single blocks x38"));
+  assert.ok(analysis.diagram.nodes.some((node) => node.id === "single-linear" && node.label === "linear1"));
+  assert.ok(analysis.diagram.nodes.some((node) => node.id === "dit-output" && node.label === "Output projection"));
+  assert.ok(analysis.diagram.nodes.some((node) => node.id === "latent-update" && node.kind === "latent"));
+  assert.ok(analysis.diagram.edges.some((edge) => edge.from === "dit" && edge.to === "dual-blocks"));
+  assert.ok(analysis.diagram.edges.some((edge) => edge.from === "dual-blocks" && edge.to === "img-mod"));
+  assert.ok(analysis.diagram.edges.some((edge) => edge.from === "merge-streams" && edge.to === "single-blocks"));
+  assert.ok(analysis.diagram.edges.some((edge) => edge.from === "single-add" && edge.to === "dit-output"));
+  assert.ok(analysis.diagram.edges.some((edge) => edge.from === "dit-output" && edge.label === "noise / velocity prediction"));
   assert.ok(analysis.diagram.edges.some((edge) => edge.from === "latent-update" && edge.to === "scheduler"));
   assert.ok(analysis.diagram.edges.some((edge) => edge.from === "scheduler" && edge.to === "dit"));
   assert.ok(analysis.diagram.edges.some((edge) => edge.to === "image"));
   assert.ok(analysis.dataflow.nodes.indexOf("prompt") < analysis.dataflow.nodes.indexOf("image"));
   assert.ok(analysis.dataflow.nodes.includes("latent-update"));
+  assert.ok(analysis.structure.nodes.some((node) => node.id === "clip" && node.diagram?.nodes.length > 0));
+  assert.ok(analysis.structure.nodes.some((node) => node.id === "t5" && node.diagram?.edges.length > 0));
+  assert.ok(
+    analysis.structure.nodes.some(
+      (node) =>
+        node.id === "dit" &&
+        node.metrics.dualBlocks === 19 &&
+        node.metrics.singleBlocks === 38 &&
+        node.diagram?.nodes.some((item) => item.id === "dit-dual-blocks") &&
+        node.diagram?.nodes.some((item) => item.id === "dit-single-blocks")
+    )
+  );
+  assert.ok(analysis.structure.nodes.some((node) => node.id === "vae" && node.diagram?.nodes.some((item) => item.kind === "vae-decoder")));
   assert.ok(analysis.structure.nodes.find((node) => node.id === "scheduler")?.details?.length > 0);
+  assertGraphEdgesResolve(analysis.diagram);
+  assertGraphEdgesResolve(analysis.dataflow);
+
+  const compactSvg = renderArchitectureDiagram(analysis.diagram, "dit", { compact: true });
+  assert.match(compactSvg, /architecture-svg diagram-flux compact/);
+  assert.match(compactSvg, /Flux Transformer/);
+  assert.match(compactSvg, /Denoise/);
+  assert.match(compactSvg, /DoubleStreamBlock x19/);
+  assert.match(compactSvg, /SingleStreamBlock x38/);
+  assert.match(compactSvg, /Dual blocks x19/);
+  assert.match(compactSvg, /Single blocks x38/);
+  assert.match(compactSvg, /concat img \+ txt/);
 });
 
 test("uses Hugging Face API metadata for storage and parameter estimates", () => {
@@ -488,6 +559,31 @@ test("keeps analysis usable when a safetensors header is unreadable", () => {
         fact.source === "weights"
     )
   );
+});
+
+test("falls back to a resolvable metadata scan diagram for unknown packages", () => {
+  const analysis = analyzeModelPackage({
+    source: { type: "local-directory", label: "Loose Artifacts" },
+    files: [
+      {
+        path: "README.md",
+        size: 120,
+        text: "# Loose model files"
+      },
+      {
+        path: "notes.json",
+        size: 80,
+        text: JSON.stringify({ description: "No recognized architecture markers" })
+      }
+    ]
+  });
+
+  assert.equal(analysis.overview.architecture, "Unknown Semantic Model");
+  assert.equal(analysis.diagram.variant, "metadata");
+  assert.ok(analysis.diagram.nodes.some((node) => node.id === "metadata"));
+  assert.ok(analysis.diagram.nodes.some((node) => node.id === "report"));
+  assertGraphEdgesResolve(analysis.diagram);
+  assertGraphEdgesResolve(analysis.dataflow);
 });
 
 test("compares structure, tensor, and storage changes between two analyses", () => {
