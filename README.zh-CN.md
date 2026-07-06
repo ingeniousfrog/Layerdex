@@ -4,7 +4,7 @@
 
 [English](./README.md) | 简体中文
 
-**仓库地址：** [github.com/ingeniousfrog/Layerdex](https://github.com/ingeniousfrog/Layerdex)
+**仓库地址：** [github.com/ingeniousfrog/Layerdex](https://github.com/ingeniousfrog/Layerdex) · **npm：** [`hf-model-architecture-skill`](https://www.npmjs.com/package/hf-model-architecture-skill)
 
 ---
 
@@ -64,6 +64,15 @@ npm run capture -- black-forest-labs/FLUX.1-dev --out artifacts/flux --level fin
 
 ## 快速开始
 
+**通过 npm（无需 clone 仓库）：**
+
+```sh
+npx hf-model-architecture-skill zai-org/GLM-5.2 --out artifacts/glm-5.2 --level 4
+npx playwright install chromium
+```
+
+**从源码安装：**
+
 ```sh
 git clone https://github.com/ingeniousfrog/Layerdex
 cd Layerdex
@@ -122,14 +131,16 @@ Agent 指令见 [`skills/hf-model-architecture/SKILL.md`](./skills/hf-model-arch
 
 ### 独立 CLI
 
+通过 npm：
+
 ```sh
-npm run capture -- zai-org/GLM-5.2 --out artifacts/glm-5.2 --level 4
+npx hf-model-architecture-skill zai-org/GLM-5.2 --out artifacts/glm-5.2 --level 4
 ```
 
-或通过 npx（发布后）：
+从 clone 的仓库：
 
 ```sh
-npx hf-model-architecture-skill zai-org/GLM-5.2 --out ./artifacts --level 4
+npm run capture -- zai-org/GLM-5.2 --out artifacts/glm-5.2 --level 4
 ```
 
 ## CLI 参数
@@ -210,14 +221,14 @@ git clone https://github.com/ingeniousfrog/Layerdex /tmp/layerdex
 
 ### npm
 
-`npm publish` 需要手动注册 npm 账号（`npm login`）。在 skill 目录发布：
+已发布至 npm：[hf-model-architecture-skill](https://www.npmjs.com/package/hf-model-architecture-skill)（v0.1.0）。无需 clone 仓库即可运行：
 
 ```sh
-cd skills/hf-model-architecture
-npm publish --access public
+npx hf-model-architecture-skill zai-org/GLM-5.2 --out ./artifacts --level 4
+npx playwright install chromium
 ```
 
-用户安装后仍需执行 `npx playwright install chromium`。
+安装后仍需单独安装 Playwright Chromium — 浏览器不会随 npm 包一起分发。
 
 ## 仓库结构
 

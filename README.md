@@ -4,7 +4,7 @@
 
 [English](./README.md) | [简体中文](./README.zh-CN.md)
 
-**Repository:** [github.com/ingeniousfrog/Layerdex](https://github.com/ingeniousfrog/Layerdex)
+**Repository:** [github.com/ingeniousfrog/Layerdex](https://github.com/ingeniousfrog/Layerdex) · **npm:** [`hf-model-architecture-skill`](https://www.npmjs.com/package/hf-model-architecture-skill)
 
 ---
 
@@ -64,6 +64,15 @@ Full sample: [`skills/hf-model-architecture/examples/flux1-dev-level3-info.json`
 
 ## Quick Start
 
+**From npm (no clone required):**
+
+```sh
+npx hf-model-architecture-skill zai-org/GLM-5.2 --out artifacts/glm-5.2 --level 4
+npx playwright install chromium
+```
+
+**From source:**
+
 ```sh
 git clone https://github.com/ingeniousfrog/Layerdex
 cd Layerdex
@@ -122,14 +131,16 @@ Agent instructions live in [`skills/hf-model-architecture/SKILL.md`](./skills/hf
 
 ### Standalone CLI
 
+From npm:
+
 ```sh
-npm run capture -- zai-org/GLM-5.2 --out artifacts/glm-5.2 --level 4
+npx hf-model-architecture-skill zai-org/GLM-5.2 --out artifacts/glm-5.2 --level 4
 ```
 
-Or via npx after publishing:
+From a cloned repo:
 
 ```sh
-npx hf-model-architecture-skill zai-org/GLM-5.2 --out ./artifacts --level 4
+npm run capture -- zai-org/GLM-5.2 --out artifacts/glm-5.2 --level 4
 ```
 
 ## CLI Reference
@@ -210,14 +221,14 @@ git clone https://github.com/ingeniousfrog/Layerdex /tmp/layerdex
 
 ### npm
 
-`npm publish` requires a manual npm account setup (`npm login`). Publish from the skill directory:
+Published on npm as [`hf-model-architecture-skill`](https://www.npmjs.com/package/hf-model-architecture-skill) (v0.1.0). Run without cloning the repo:
 
 ```sh
-cd skills/hf-model-architecture
-npm publish --access public
+npx hf-model-architecture-skill zai-org/GLM-5.2 --out ./artifacts --level 4
+npx playwright install chromium
 ```
 
-Users still need `npx playwright install chromium` after install.
+Users still need Playwright Chromium after install — browsers are not bundled in the package.
 
 ## Repository Layout
 
