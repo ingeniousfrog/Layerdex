@@ -12,7 +12,7 @@ const DEFAULT_OPTIONS = Object.freeze({
   level: "4",
   outDir: ".",
   padding: 24,
-  timeoutMs: 120000,
+  timeoutSeconds: 120,
   width: 2048
 });
 
@@ -154,6 +154,72 @@ export function buildOutputPayload({
   };
 }
 
+export function parseTimeoutSeconds(value, fallback = DEFAULT_OPTIONS.timeoutSeconds) {
+  if (value === undefined || value === null || value === "") {
+    return fallback;
+  }
+
+  const seconds = Number(value);
+  if (!Number.isFinite(seconds) || seconds <= 0) {
+    throw new Error(`Invalid timeout: "${value}". Use a positive number of seconds, e.g. --timeout 300.`);
+  }
+
+  return Math.round(seconds);
+}
+
+export function resolveTimeoutSeconds(options = {}) {
+  if (options.timeoutSeconds !== undefined) {
+    return parseTimeoutSeconds(options.timeoutSeconds);
+  }
+  if (options.timeoutMs !== undefined) {
+    return parseTimeoutSeconds(Number(options.timeoutMs) / 1000);
+  }
+  return DEFAULT_OPTIONS.timeoutSeconds;
+}
+
+export function buildCaptureFailureMessage({
+  modelId,
+  hfviewerUrl,
+  timeoutSeconds,
+  cause,
+  processingModalVisible = false
+}) {
+  const lines = [
+    `Failed to capture model structure for ${modelId} from hfviewer.com.`
+  ];
+
+  if (processingModalVisible) {
+    lines.push(
+      "",
+      "hfviewer showed a \"Processing model\" dialog (the model is still processing or queued).",
+      "Layerdex waits for the page to finish rendering and does not support email notification."
+    );
+  }
+
+  const causeMessage = cause instanceof Error ? cause.message : String(cause || "");
+  const timedOut = /timeout/i.test(causeMessage) || cause?.name === "TimeoutError";
+  if (timedOut) {
+    lines.push(
+      "",
+      `Timed out after ${timeoutSeconds}s. Retry with a longer wait, e.g. --timeout 300.`
+    );
+  }
+
+  lines.push(
+    "",
+    "Could not retrieve this model's architecture from hfviewer. Open the page manually:",
+    hfviewerUrl,
+    "",
+    "This model may not have been indexed or cached by hfviewer yet, especially for large or rarely viewed models."
+  );
+
+  if (causeMessage) {
+    lines.push("", `Original error: ${causeMessage}`);
+  }
+
+  return lines.join("\n");
+}
+
 export function parseCliArgs(argv) {
   const initial = {
     ...DEFAULT_OPTIONS,
@@ -195,7 +261,11 @@ export async function captureHfviewer(options) {
 
   await fs.mkdir(outDir, { recursive: true });
 
+  const timeoutSeconds = resolveTimeoutSeconds(options);
+  const timeoutMs = timeoutSeconds * 1000;
   const browser = await playwright.chromium.launch({ headless: options.headless !== false });
+  let page;
+
   try {
     const context = await browser.newContext({
       colorScheme: "dark",
@@ -205,8 +275,7 @@ export async function captureHfviewer(options) {
         height: toPositiveInteger(options.height, DEFAULT_OPTIONS.height)
       }
     });
-    const page = await context.newPage();
-    const timeoutMs = toPositiveInteger(options.timeoutMs, DEFAULT_OPTIONS.timeoutMs);
+    page = await context.newPage();
 
     await page.goto(hfviewerUrl, { waitUntil: "domcontentloaded", timeout: timeoutMs });
     await waitForOuterViewer(page, timeoutMs);
@@ -242,6 +311,15 @@ export async function captureHfviewer(options) {
 
     await fs.writeFile(jsonPath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
     return payload;
+  } catch (error) {
+    const processingModalVisible = page ? await detectProcessingModal(page) : false;
+    throw new Error(buildCaptureFailureMessage({
+      modelId,
+      hfviewerUrl,
+      timeoutSeconds,
+      cause: error,
+      processingModalVisible
+    }), { cause: error });
   } finally {
     await browser.close();
   }
@@ -279,7 +357,10 @@ function readCliToken(argv, index, state) {
     return readCliToken(argv, index + 2, { ...state, deviceScaleFactor: Number(requireValue(token, next)) });
   }
   if (token === "--timeout") {
-    return readCliToken(argv, index + 2, { ...state, timeoutMs: Number(requireValue(token, next)) });
+    return readCliToken(argv, index + 2, {
+      ...state,
+      timeoutSeconds: parseTimeoutSeconds(requireValue(token, next))
+    });
   }
   if (token === "--padding") {
     return readCliToken(argv, index + 2, { ...state, padding: Number(requireValue(token, next)) });
@@ -307,6 +388,17 @@ async function importPlaywright() {
     throw new Error(
       "Playwright is required for hfviewer capture. Run `npm install` in this repo, then retry."
     );
+  }
+}
+
+async function detectProcessingModal(page) {
+  try {
+    return await page.evaluate(() => {
+      const text = document.body?.innerText || "";
+      return /processing model/i.test(text) && /leave your email/i.test(text);
+    });
+  } catch {
+    return false;
   }
 }
 
@@ -644,7 +736,7 @@ Options:
   --width <px>      Browser viewport width (default: 2048)
   --height <px>     Browser viewport height (default: 1152)
   --scale <n>       Device scale factor for screenshot fallback (default: 2)
-  --timeout <ms>    Wait budget for hfviewer rendering (default: 120000)
+  --timeout <sec>   Wait budget for hfviewer rendering in seconds (default: 120)
   --padding <px>    Cropped graph padding for hfviewer API export (default: 24)
   --headed          Show the browser while capturing
 `);

@@ -1,12 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  buildCaptureFailureMessage,
   buildOutputPayload,
   labelForHfviewerLevel,
   normalizeModelId,
   parseCliArgs,
   parseInfoPanelText,
-  parseLevelOption
+  parseLevelOption,
+  parseTimeoutSeconds,
+  resolveTimeoutSeconds
 } from "../scripts/capture-hfviewer.mjs";
 
 test("normalizes Hugging Face and hfviewer model inputs", () => {
@@ -116,4 +119,30 @@ test("parses CLI flags without mutating defaults", () => {
   assert.equal(parsed.outDir, "artifacts/glm");
   assert.equal(parsed.level, "4");
   assert.equal(parsed.headless, false);
+});
+
+test("parses timeout in seconds", () => {
+  assert.equal(parseTimeoutSeconds("300"), 300);
+  assert.equal(parseTimeoutSeconds(undefined), 120);
+  assert.throws(() => parseTimeoutSeconds("0"), /positive number of seconds/);
+
+  const parsed = parseCliArgs(["zai-org/GLM-5.2", "--timeout", "300"]);
+  assert.equal(parsed.timeoutSeconds, 300);
+  assert.equal(resolveTimeoutSeconds(parsed), 300);
+});
+
+test("builds capture failure guidance for hfviewer misses", () => {
+  const message = buildCaptureFailureMessage({
+    modelId: "qualcomm/MaskRCNN",
+    hfviewerUrl: "https://hfviewer.com/qualcomm/MaskRCNN",
+    timeoutSeconds: 120,
+    cause: new Error("Timeout 120000ms exceeded."),
+    processingModalVisible: true
+  });
+
+  assert.match(message, /qualcomm\/MaskRCNN/);
+  assert.match(message, /Processing model/);
+  assert.match(message, /https:\/\/hfviewer\.com\/qualcomm\/MaskRCNN/);
+  assert.match(message, /not have been indexed or cached/);
+  assert.match(message, /--timeout 300/);
 });

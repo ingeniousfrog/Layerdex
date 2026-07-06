@@ -97,7 +97,7 @@ npm run capture -- zai-org/GLM-5.2 --out artifacts/glm --level 4
 |------|--------|------|
 | `--out <dir>` | `.` | 输出目录 |
 | `--level <n\|block\|detailed\|fine>` | `4` | 粒度 |
-| `--timeout <ms>` | `120000` | 渲染等待时间 |
+| `--timeout <sec>` | `120` | 渲染等待时间（秒） |
 | `--headed` | 关闭 | 显示浏览器（调试） |
 | `--help` | | 完整参数列表 |
 
@@ -132,6 +132,7 @@ Schema：[`references/hfviewer-output.schema.json`](./skills/hf-model-architectu
 | 浏览器启动失败 | `npx playwright install chromium` |
 | `hfviewer only exposes levels 0-N` | 降低 `--level` |
 | Gated / 私有模型 | hfviewer 不支持 |
+| 超时 / Processing 弹窗 | 增大 `--timeout`（秒）；手动打开 hfviewer 链接 — 该模型可能尚未被收录 |
 | `exportMethod: element-screenshot` | 非致命回退，PNG 仍有效 |
 
 ## 项目结构

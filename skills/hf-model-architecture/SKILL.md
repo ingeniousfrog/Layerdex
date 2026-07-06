@@ -50,7 +50,7 @@ Useful options:
 - `--out <dir>`: output directory. Default: current directory.
 - `--width <px>` / `--height <px>`: browser viewport. Default: `2048x1152`.
 - `--scale <n>`: browser device scale factor for screenshot fallback. Default: `2`.
-- `--timeout <ms>`: wait budget for hfviewer generation. Default: `120000`.
+- `--timeout <sec>`: wait budget for hfviewer generation in seconds. Default: `120`. Example: `--timeout 300` waits up to 5 minutes.
 - `--headed`: run the browser visibly for debugging.
 
 If Playwright is missing, install project dependencies before running the script. If browser binaries are missing, run Playwright's browser install for Chromium.
@@ -113,7 +113,8 @@ When automation is unavailable, use a browser:
 | Error | Likely cause | Fix |
 |-------|--------------|-----|
 | `Playwright is required for hfviewer capture` | Missing npm dependencies | Run `npm install` in the skill or repo directory |
-| `hfviewer iframe is not available` | Page did not finish loading | Increase `--timeout`; retry with `--headed` |
+| `hfviewer iframe is not available` | Page did not finish loading | Increase `--timeout` (seconds); retry with `--headed` |
+| Timeout or "Processing model" email dialog | Slow or uncached model | Increase `--timeout`; open the hfviewer URL manually — the model may not be indexed yet |
 | `hfviewer info panel was not found` | Model failed to render | Confirm the model is public and supported on hfviewer |
 | `hfviewer only exposes levels 0-N` | Requested level exceeds model support | Retry with a lower `--level` |
 | `Expected a Hugging Face model id like "owner/model"` | Malformed input | Pass `owner/model`, a huggingface.co URL, or an hfviewer.com URL |

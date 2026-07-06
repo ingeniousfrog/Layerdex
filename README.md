@@ -97,7 +97,7 @@ npm run capture -- zai-org/GLM-5.2 --out artifacts/glm --level 4
 |------|---------|-------------|
 | `--out <dir>` | `.` | Output directory |
 | `--level <n\|block\|detailed\|fine>` | `4` | Granularity level |
-| `--timeout <ms>` | `120000` | Render wait budget |
+| `--timeout <sec>` | `120` | Render wait budget in seconds |
 | `--headed` | off | Show browser (debug) |
 | `--help` | | Full option list |
 
@@ -132,6 +132,7 @@ Schema: [`references/hfviewer-output.schema.json`](./skills/hf-model-architectur
 | Browser launch fails | `npx playwright install chromium` |
 | `hfviewer only exposes levels 0-N` | Lower `--level` |
 | Gated / private model | Not supported by hfviewer |
+| Timeout / processing dialog | Increase `--timeout` (seconds); open the hfviewer URL manually — the model may not be indexed yet |
 | `exportMethod: element-screenshot` | Non-fatal; PNG is still valid |
 
 ## Project structure
