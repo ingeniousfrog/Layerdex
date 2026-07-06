@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "capture": "node skills/hfviewer-model-structure/scripts/capture-hfviewer.mjs",
-    "test": "node --test"
+    "capture": "node skills/hf-model-architecture/scripts/capture-hfviewer.mjs",
+    "test": "node --test skills/hf-model-architecture/test/*.test.js"
   },
   "devDependencies": {
     "playwright": "^1.55.0"

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://layerdex.local/schemas/hfviewer-output.schema.json",
+  "$id": "https://github.com/ingeniousfrog/Layerdex/blob/main/skills/hf-model-architecture/references/hfviewer-output.schema.json",
   "title": "HFViewer Model Structure Output",
   "type": "object",
   "additionalProperties": false,

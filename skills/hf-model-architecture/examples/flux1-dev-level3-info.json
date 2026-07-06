@@ -1,0 +1,203 @@
+{
+  "schemaVersion": "1.0.0",
+  "source": {
+    "modelId": "black-forest-labs/FLUX.1-dev",
+    "hfviewerUrl": "https://hfviewer.com/black-forest-labs/FLUX.1-dev",
+    "huggingFaceUrl": "https://huggingface.co/black-forest-labs/FLUX.1-dev",
+    "capturedAt": "2026-07-06T03:13:21.553Z",
+    "requestedLevel": 3,
+    "hfviewerLevel": 2,
+    "granularityLabel": "Fine"
+  },
+  "artifacts": {
+    "diagramPng": "examples/flux1-dev-level3-structure.png",
+    "infoJson": "examples/flux1-dev-level3-info.json",
+    "exportMethod": "element-screenshot",
+    "width": 941,
+    "height": 944
+  },
+  "model": {
+    "title": "FLUX.1-dev model",
+    "nodeCount": 27,
+    "operationTypeCount": 25,
+    "operationCount": 27,
+    "tokenVocab": 49408,
+    "latency": "No latency annotations found",
+    "semanticFlow": "MODULE-DERIVED SEMANTIC FLOW",
+    "fidelity": "MODULE-DERIVED FIDELITY",
+    "outputShape": null,
+    "summaryText": "27 nodes · 25 op types · 49,408-token vocab · No latency annotations found",
+    "attributes": {}
+  },
+  "operationTypes": [
+    {
+      "name": "Linear",
+      "percent": 11.1
+    },
+    {
+      "name": "Input",
+      "percent": 3.7
+    },
+    {
+      "name": "CLIPTokenizer",
+      "percent": 3.7
+    },
+    {
+      "name": "CLIPTextEmbeddings",
+      "percent": 3.7
+    },
+    {
+      "name": "CLIPEncoderLayer",
+      "percent": 3.7
+    },
+    {
+      "name": "LayerNorm",
+      "percent": 3.7
+    },
+    {
+      "name": "Pooled Prompt Embeddings",
+      "percent": 3.7
+    },
+    {
+      "name": "T5TokenizerFast",
+      "percent": 3.7
+    },
+    {
+      "name": "Embedding",
+      "percent": 3.7
+    },
+    {
+      "name": "Other",
+      "percent": 59.3
+    }
+  ],
+  "sections": [
+    {
+      "heading": "Operation types",
+      "lines": [
+        "27 operations",
+        "Linear",
+        "11.1%",
+        "Input",
+        "3.7%",
+        "CLIPTokenizer",
+        "3.7%",
+        "CLIPTextEmbeddings",
+        "3.7%",
+        "CLIPEncoderLayer",
+        "3.7%",
+        "LayerNorm",
+        "3.7%",
+        "Pooled Prompt Embeddings",
+        "3.7%",
+        "T5TokenizerFast",
+        "3.7%",
+        "Embedding",
+        "3.7%",
+        "Other",
+        "59.3%"
+      ]
+    },
+    {
+      "heading": "Model attributes",
+      "lines": []
+    },
+    {
+      "heading": "Vocab size",
+      "lines": [
+        "49,408"
+      ]
+    },
+    {
+      "heading": "Latency coverage",
+      "lines": [
+        "—"
+      ]
+    },
+    {
+      "heading": "Nodes",
+      "lines": [
+        "27"
+      ]
+    },
+    {
+      "heading": "Op types",
+      "lines": [
+        "25"
+      ]
+    },
+    {
+      "heading": "Vocab size",
+      "lines": [
+        "49408"
+      ]
+    },
+    {
+      "heading": "Precision breakdown",
+      "lines": [
+        "27 layers",
+        "Undetermined",
+        "100.0%",
+        "For detailed profiling, benchmark this in the",
+        "Embedl Hub",
+        "RUN ON DEVICE",
+        "Want to run your own version on hardware?",
+        "Embedl Deploy helps you make PyTorch models compile and quantize predictably on edge toolchains.",
+        "OPEN EMBEDL DEPLOY"
+      ]
+    }
+  ],
+  "raw": {
+    "infoPanelText": "FLUX.1-dev model\n27 nodes · 25 op types · 49,408-token vocab · No latency annotations found\nMODULE-DERIVED SEMANTIC FLOW · MODULE-DERIVED FIDELITY\nOperation types\n27 operations\nLinear\n11.1%\nInput\n3.7%\nCLIPTokenizer\n3.7%\nCLIPTextEmbeddings\n3.7%\nCLIPEncoderLayer\n3.7%\nLayerNorm\n3.7%\nPooled Prompt Embeddings\n3.7%\nT5TokenizerFast\n3.7%\nEmbedding\n3.7%\nOther\n59.3%\nModel attributes\nVocab size\n49,408\nLatency coverage\n—\nNodes\n27\nOp types\n25\nVocab size\n49408\nPrecision breakdown\n27 layers\nUndetermined\n100.0%\nFor detailed profiling, benchmark this in the\nEmbedl Hub\nRUN ON DEVICE\nWant to run your own version on hardware?\nEmbedl Deploy helps you make PyTorch models compile and quantize predictably on edge toolchains.\nOPEN EMBEDL DEPLOY",
+    "pageTitle": "black-forest-labs/FLUX.1-dev • hfviewer",
+    "rightPanelLines": [
+      "FLUX.1-dev model",
+      "27 nodes · 25 op types · 49,408-token vocab · No latency annotations found",
+      "MODULE-DERIVED SEMANTIC FLOW · MODULE-DERIVED FIDELITY",
+      "Operation types",
+      "27 operations",
+      "Linear",
+      "11.1%",
+      "Input",
+      "3.7%",
+      "CLIPTokenizer",
+      "3.7%",
+      "CLIPTextEmbeddings",
+      "3.7%",
+      "CLIPEncoderLayer",
+      "3.7%",
+      "LayerNorm",
+      "3.7%",
+      "Pooled Prompt Embeddings",
+      "3.7%",
+      "T5TokenizerFast",
+      "3.7%",
+      "Embedding",
+      "3.7%",
+      "Other",
+      "59.3%",
+      "Model attributes",
+      "Vocab size",
+      "49,408",
+      "Latency coverage",
+      "—",
+      "Nodes",
+      "27",
+      "Op types",
+      "25",
+      "Vocab size",
+      "49408",
+      "Precision breakdown",
+      "27 layers",
+      "Undetermined",
+      "100.0%",
+      "For detailed profiling, benchmark this in the",
+      "Embedl Hub",
+      "RUN ON DEVICE",
+      "Want to run your own version on hardware?",
+      "Embedl Deploy helps you make PyTorch models compile and quantize predictably on edge toolchains.",
+      "OPEN EMBEDL DEPLOY"
+    ]
+  },
+  "warnings": []
+}

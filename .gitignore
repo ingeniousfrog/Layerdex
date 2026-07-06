@@ -2,6 +2,7 @@ node_modules/
 artifacts/
 .DS_Store
 
-# hfviewer capture outputs
+# hfviewer capture outputs (outside examples/)
 *__*-level*-structure.png
 *__*-level*-info.json
+!skills/hf-model-architecture/examples/

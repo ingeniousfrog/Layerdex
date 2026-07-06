@@ -1,0 +1,19 @@
+{
+  "name": "hf-model-architecture",
+  "version": "0.1.0",
+  "description": "Capture Hugging Face model architecture diagrams and hfviewer metadata as PNG + JSON",
+  "author": {
+    "name": "ingeniousfrog",
+    "url": "https://github.com/ingeniousfrog"
+  },
+  "homepage": "https://github.com/ingeniousfrog/Layerdex#readme",
+  "repository": "https://github.com/ingeniousfrog/Layerdex",
+  "license": "Apache-2.0",
+  "keywords": [
+    "huggingface",
+    "hfviewer",
+    "model-architecture",
+    "model-visualization",
+    "claude-skill"
+  ]
+}

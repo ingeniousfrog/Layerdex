@@ -635,7 +635,7 @@ function toPositiveNumber(value, fallback) {
 
 function printHelp() {
   console.log(`Usage:
-  node skills/hfviewer-model-structure/scripts/capture-hfviewer.mjs <model-id-or-url> [options]
+  node skills/hf-model-architecture/scripts/capture-hfviewer.mjs <model-id-or-url> [options]
 
 Options:
   --out <dir>       Output directory (default: current directory)

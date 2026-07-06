@@ -7,7 +7,7 @@ import {
   parseCliArgs,
   parseInfoPanelText,
   parseLevelOption
-} from "../skills/hfviewer-model-structure/scripts/capture-hfviewer.mjs";
+} from "../scripts/capture-hfviewer.mjs";
 
 test("normalizes Hugging Face and hfviewer model inputs", () => {
   assert.equal(normalizeModelId("zai-org/GLM-5.2"), "zai-org/GLM-5.2");

@@ -1,0 +1,4 @@
+interface:
+  display_name: "HF Model Architecture"
+  short_description: "Capture hfviewer architecture graphs and metadata"
+  default_prompt: "Use $hf-model-architecture to capture a Level 4 hfviewer PNG and JSON summary for zai-org/GLM-5.2."

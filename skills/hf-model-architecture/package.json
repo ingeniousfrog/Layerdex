@@ -1,0 +1,45 @@
+{
+  "name": "hf-model-architecture-skill",
+  "version": "0.1.0",
+  "description": "Capture Hugging Face model architecture diagrams and hfviewer metadata as PNG + JSON",
+  "type": "module",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ingeniousfrog/Layerdex.git",
+    "directory": "skills/hf-model-architecture"
+  },
+  "homepage": "https://github.com/ingeniousfrog/Layerdex#readme",
+  "bugs": {
+    "url": "https://github.com/ingeniousfrog/Layerdex/issues"
+  },
+  "bin": {
+    "capture-hf-model": "scripts/capture-hfviewer.mjs"
+  },
+  "files": [
+    "SKILL.md",
+    "README.md",
+    "scripts/",
+    "references/",
+    "examples/",
+    "agents/",
+    "install.sh"
+  ],
+  "scripts": {
+    "capture": "node scripts/capture-hfviewer.mjs",
+    "test": "node --test test/",
+    "postinstall": "node -e \"console.log('Run: npx playwright install chromium')\""
+  },
+  "dependencies": {
+    "playwright": "^1.55.0"
+  },
+  "keywords": [
+    "claude-skill",
+    "codex-skill",
+    "cursor-skill",
+    "agent-skill",
+    "huggingface",
+    "hfviewer",
+    "model-visualization"
+  ]
+}
