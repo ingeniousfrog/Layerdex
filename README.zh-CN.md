@@ -97,7 +97,7 @@ npm run capture -- zai-org/GLM-5.2 --out artifacts/glm --level 4
 |------|--------|------|
 | `--out <dir>` | `.` | 输出目录 |
 | `--level <n\|block\|detailed\|fine>` | `4` | 粒度 |
-| `--timeout <sec>` | `120` | 渲染等待时间（秒） |
+| `--timeout <sec>` | `120` | 总渲染等待时间（秒） |
 | `--headed` | 关闭 | 显示浏览器（调试） |
 | `--help` | | 完整参数列表 |
 

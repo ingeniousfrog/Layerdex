@@ -177,6 +177,37 @@ export function resolveTimeoutSeconds(options = {}) {
   return DEFAULT_OPTIONS.timeoutSeconds;
 }
 
+export function createTimeoutBudget(timeoutSeconds) {
+  const timeoutMs = timeoutSeconds * 1000;
+  const deadline = Date.now() + timeoutMs;
+
+  return {
+    remainingMs() {
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) {
+        const error = new Error(`Timed out after ${timeoutSeconds}s while waiting for hfviewer.`);
+        error.name = "TimeoutError";
+        throw error;
+      }
+      return remaining;
+    }
+  };
+}
+
+export function shouldSuggestManualHfviewerVisit({ cause, processingModalVisible = false }) {
+  if (processingModalVisible) {
+    return true;
+  }
+
+  const causeMessage = cause instanceof Error ? cause.message : String(cause || "");
+  if (/timeout/i.test(causeMessage) || cause?.name === "TimeoutError") {
+    return true;
+  }
+
+  return /hfviewer iframe is not available/i.test(causeMessage)
+    || /hfviewer info panel was not found/i.test(causeMessage);
+}
+
 export function buildCaptureFailureMessage({
   modelId,
   hfviewerUrl,
@@ -205,13 +236,15 @@ export function buildCaptureFailureMessage({
     );
   }
 
-  lines.push(
-    "",
-    "Could not retrieve this model's architecture from hfviewer. Open the page manually:",
-    hfviewerUrl,
-    "",
-    "This model may not have been indexed or cached by hfviewer yet, especially for large or rarely viewed models."
-  );
+  if (shouldSuggestManualHfviewerVisit({ cause, processingModalVisible })) {
+    lines.push(
+      "",
+      "Could not retrieve this model's architecture from hfviewer. Open the page manually:",
+      hfviewerUrl,
+      "",
+      "This model may not have been indexed or cached by hfviewer yet, especially for large or rarely viewed models."
+    );
+  }
 
   if (causeMessage) {
     lines.push("", `Original error: ${causeMessage}`);
@@ -262,7 +295,7 @@ export async function captureHfviewer(options) {
   await fs.mkdir(outDir, { recursive: true });
 
   const timeoutSeconds = resolveTimeoutSeconds(options);
-  const timeoutMs = timeoutSeconds * 1000;
+  const timeoutBudget = createTimeoutBudget(timeoutSeconds);
   const browser = await playwright.chromium.launch({ headless: options.headless !== false });
   let page;
 
@@ -277,11 +310,11 @@ export async function captureHfviewer(options) {
     });
     page = await context.newPage();
 
-    await page.goto(hfviewerUrl, { waitUntil: "domcontentloaded", timeout: timeoutMs });
-    await waitForOuterViewer(page, timeoutMs);
-    await setGranularityLevel(page, granularity.hfviewerLevel, timeoutMs);
-    const frame = await getViewerFrame(page, timeoutMs);
-    await waitForEmbeddedViewer(frame, timeoutMs);
+    await page.goto(hfviewerUrl, { waitUntil: "domcontentloaded", timeout: timeoutBudget.remainingMs() });
+    await waitForOuterViewer(page, timeoutBudget);
+    await setGranularityLevel(page, granularity.hfviewerLevel, timeoutBudget);
+    const frame = await getViewerFrame(page, timeoutBudget);
+    await waitForEmbeddedViewer(frame, timeoutBudget);
     await forceZoomToFit(frame);
 
     const infoPanelText = await extractInfoPanelText(frame);
@@ -402,7 +435,8 @@ async function detectProcessingModal(page) {
   }
 }
 
-async function waitForOuterViewer(page, timeoutMs) {
+async function waitForOuterViewer(page, timeoutBudget) {
+  const timeoutMs = timeoutBudget.remainingMs();
   await page.waitForSelector("#viewer-model-frame", { state: "attached", timeout: timeoutMs });
   await page.waitForFunction(
     () => {
@@ -411,12 +445,12 @@ async function waitForOuterViewer(page, timeoutMs) {
       return !!frame && src && src !== "about:blank";
     },
     undefined,
-    { timeout: timeoutMs }
+    { timeout: timeoutBudget.remainingMs() }
   );
 }
 
-async function setGranularityLevel(page, hfviewerLevel, timeoutMs) {
-  await page.waitForSelector("#viewer-granularity-input", { state: "attached", timeout: timeoutMs });
+async function setGranularityLevel(page, hfviewerLevel, timeoutBudget) {
+  await page.waitForSelector("#viewer-granularity-input", { state: "attached", timeout: timeoutBudget.remainingMs() });
   const maxLevel = await page.waitForFunction(
     () => {
       const wrapper = document.getElementById("viewer-granularity");
@@ -428,7 +462,7 @@ async function setGranularityLevel(page, hfviewerLevel, timeoutMs) {
       return Number.isFinite(max) ? max : false;
     },
     undefined,
-    { timeout: timeoutMs }
+    { timeout: timeoutBudget.remainingMs() }
   );
   const supportedMax = await maxLevel.jsonValue();
   if (hfviewerLevel > supportedMax) {
@@ -444,8 +478,8 @@ async function setGranularityLevel(page, hfviewerLevel, timeoutMs) {
   }, hfviewerLevel);
 }
 
-async function getViewerFrame(page, timeoutMs) {
-  const handle = await page.waitForSelector("#viewer-model-frame", { state: "attached", timeout: timeoutMs });
+async function getViewerFrame(page, timeoutBudget) {
+  const handle = await page.waitForSelector("#viewer-model-frame", { state: "attached", timeout: timeoutBudget.remainingMs() });
   const frame = await handle.contentFrame();
   if (!frame) {
     throw new Error("hfviewer iframe is not available.");
@@ -453,7 +487,7 @@ async function getViewerFrame(page, timeoutMs) {
   return frame;
 }
 
-async function waitForEmbeddedViewer(frame, timeoutMs) {
+async function waitForEmbeddedViewer(frame, timeoutBudget) {
   await frame.waitForFunction(
     () => {
       const graphs = document.querySelector(".graphs");
@@ -475,7 +509,7 @@ async function waitForEmbeddedViewer(frame, timeoutMs) {
       );
     },
     undefined,
-    { timeout: timeoutMs }
+    { timeout: timeoutBudget.remainingMs() }
   );
 }
 
@@ -736,7 +770,7 @@ Options:
   --width <px>      Browser viewport width (default: 2048)
   --height <px>     Browser viewport height (default: 1152)
   --scale <n>       Device scale factor for screenshot fallback (default: 2)
-  --timeout <sec>   Wait budget for hfviewer rendering in seconds (default: 120)
+  --timeout <sec>   Total wait budget for hfviewer rendering in seconds (default: 120)
   --padding <px>    Cropped graph padding for hfviewer API export (default: 24)
   --headed          Show the browser while capturing
 `);

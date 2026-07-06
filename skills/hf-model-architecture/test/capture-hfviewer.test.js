@@ -3,13 +3,15 @@ import test from "node:test";
 import {
   buildCaptureFailureMessage,
   buildOutputPayload,
+  createTimeoutBudget,
   labelForHfviewerLevel,
   normalizeModelId,
   parseCliArgs,
   parseInfoPanelText,
   parseLevelOption,
   parseTimeoutSeconds,
-  resolveTimeoutSeconds
+  resolveTimeoutSeconds,
+  shouldSuggestManualHfviewerVisit
 } from "../scripts/capture-hfviewer.mjs";
 
 test("normalizes Hugging Face and hfviewer model inputs", () => {
@@ -145,4 +147,33 @@ test("builds capture failure guidance for hfviewer misses", () => {
   assert.match(message, /https:\/\/hfviewer\.com\/qualcomm\/MaskRCNN/);
   assert.match(message, /not have been indexed or cached/);
   assert.match(message, /--timeout 300/);
+});
+
+test("only suggests manual hfviewer visit for retrieval failures", () => {
+  assert.equal(shouldSuggestManualHfviewerVisit({
+    cause: new Error("hfviewer only exposes levels 0-2 for this model; requested internal level 3.")
+  }), false);
+
+  assert.equal(shouldSuggestManualHfviewerVisit({
+    cause: new Error("hfviewer iframe is not available.")
+  }), true);
+});
+
+test("omits manual visit guidance for unsupported granularity errors", () => {
+  const message = buildCaptureFailureMessage({
+    modelId: "zai-org/GLM-5.2",
+    hfviewerUrl: "https://hfviewer.com/zai-org/GLM-5.2",
+    timeoutSeconds: 120,
+    cause: new Error("hfviewer only exposes levels 0-2 for this model; requested internal level 3.")
+  });
+
+  assert.doesNotMatch(message, /not have been indexed or cached/);
+  assert.match(message, /hfviewer only exposes levels/);
+});
+
+test("createTimeoutBudget enforces a shared deadline", async () => {
+  const budget = createTimeoutBudget(1);
+  assert.ok(budget.remainingMs() > 0);
+  await new Promise((resolve) => setTimeout(resolve, 1100));
+  assert.throws(() => budget.remainingMs(), /Timed out after 1s/);
 });

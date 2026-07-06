@@ -1,6 +1,6 @@
 {
   "name": "hf-model-architecture",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Capture Hugging Face model architecture diagrams and hfviewer metadata as PNG + JSON",
   "author": {
     "name": "ingeniousfrog",

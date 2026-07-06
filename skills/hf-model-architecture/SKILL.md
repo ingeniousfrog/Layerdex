@@ -50,7 +50,7 @@ Useful options:
 - `--out <dir>`: output directory. Default: current directory.
 - `--width <px>` / `--height <px>`: browser viewport. Default: `2048x1152`.
 - `--scale <n>`: browser device scale factor for screenshot fallback. Default: `2`.
-- `--timeout <sec>`: wait budget for hfviewer generation in seconds. Default: `120`. Example: `--timeout 300` waits up to 5 minutes.
+- `--timeout <sec>`: total wait budget for hfviewer generation in seconds. Default: `120`. Example: `--timeout 300` waits up to 5 minutes across all loading steps.
 - `--headed`: run the browser visibly for debugging.
 
 If Playwright is missing, install project dependencies before running the script. If browser binaries are missing, run Playwright's browser install for Chromium.

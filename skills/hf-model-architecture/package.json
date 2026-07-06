@@ -1,6 +1,6 @@
 {
   "name": "hf-model-architecture-skill",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Capture Hugging Face model architecture diagrams and hfviewer metadata as PNG + JSON",
   "type": "module",
   "license": "Apache-2.0",

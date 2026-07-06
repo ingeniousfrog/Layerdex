@@ -97,7 +97,7 @@ npm run capture -- zai-org/GLM-5.2 --out artifacts/glm --level 4
 |------|---------|-------------|
 | `--out <dir>` | `.` | Output directory |
 | `--level <n\|block\|detailed\|fine>` | `4` | Granularity level |
-| `--timeout <sec>` | `120` | Render wait budget in seconds |
+| `--timeout <sec>` | `120` | Total render wait budget in seconds |
 | `--headed` | off | Show browser (debug) |
 | `--help` | | Full option list |
 
