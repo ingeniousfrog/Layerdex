@@ -50,6 +50,7 @@ npx hf-model-architecture-skill black-forest-labs/FLUX.1-dev --out ./artifacts -
 
 ```sh
 npx hf-model-architecture-skill <owner/model> --out <dir> [--level 4]
+npx hf-model-architecture-skill@latest <owner/model> --out <dir>   # 使用最新发布版
 npx playwright install chromium   # 首次运行
 ```
 
@@ -87,6 +88,9 @@ git clone https://github.com/ingeniousfrog/Layerdex /tmp/layerdex
 # npm
 npx hf-model-architecture-skill zai-org/GLM-5.2 --out artifacts/glm --level 4
 
+# 大模型或冷门模型 — 适当加长等待
+npx hf-model-architecture-skill qualcomm/MaskRCNN --out artifacts/maskrcnn --timeout 300
+
 # 源码
 npm run capture -- zai-org/GLM-5.2 --out artifacts/glm --level 4
 ```
@@ -97,7 +101,7 @@ npm run capture -- zai-org/GLM-5.2 --out artifacts/glm --level 4
 |------|--------|------|
 | `--out <dir>` | `.` | 输出目录 |
 | `--level <n\|block\|detailed\|fine>` | `4` | 粒度 |
-| `--timeout <sec>` | `120` | 总渲染等待时间（秒） |
+| `--timeout <sec>` | `120` | 总渲染等待时间（秒）。大模型或冷门模型建议 `300` 或更长。 |
 | `--headed` | 关闭 | 显示浏览器（调试） |
 | `--help` | | 完整参数列表 |
 
@@ -132,7 +136,7 @@ Schema：[`references/hfviewer-output.schema.json`](./skills/hf-model-architectu
 | 浏览器启动失败 | `npx playwright install chromium` |
 | `hfviewer only exposes levels 0-N` | 降低 `--level` |
 | Gated / 私有模型 | hfviewer 不支持 |
-| 超时 / Processing 弹窗 | 增大 `--timeout`（秒）；手动打开 hfviewer 链接 — 该模型可能尚未被收录 |
+| 超时 / Processing 弹窗 | 增大 `--timeout`（秒），例如 `--timeout 300`。若 hfviewer 出现 **Processing model** 邮箱弹窗，表示仍在后台处理 — Layerdex 不会代填邮箱；可继续等待或手动打开 hfviewer 链接 — 该模型可能尚未被收录 |
 | `exportMethod: element-screenshot` | 非致命回退，PNG 仍有效 |
 
 ## 项目结构

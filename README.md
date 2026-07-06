@@ -50,6 +50,7 @@ Full sample: [`examples/flux1-dev-level3-info.json`](./skills/hf-model-architect
 
 ```sh
 npx hf-model-architecture-skill <owner/model> --out <dir> [--level 4]
+npx hf-model-architecture-skill@latest <owner/model> --out <dir>   # pin latest release
 npx playwright install chromium   # first run only
 ```
 
@@ -87,6 +88,9 @@ Do not install into `~/.cursor/skills-cursor/` (reserved for Cursor built-ins).
 # from npm
 npx hf-model-architecture-skill zai-org/GLM-5.2 --out artifacts/glm --level 4
 
+# slow or rarely viewed models — allow more time
+npx hf-model-architecture-skill qualcomm/MaskRCNN --out artifacts/maskrcnn --timeout 300
+
 # from repo
 npm run capture -- zai-org/GLM-5.2 --out artifacts/glm --level 4
 ```
@@ -97,7 +101,7 @@ npm run capture -- zai-org/GLM-5.2 --out artifacts/glm --level 4
 |------|---------|-------------|
 | `--out <dir>` | `.` | Output directory |
 | `--level <n\|block\|detailed\|fine>` | `4` | Granularity level |
-| `--timeout <sec>` | `120` | Total render wait budget in seconds |
+| `--timeout <sec>` | `120` | Total render wait budget in seconds. Use `300` or more for large or rarely viewed models. |
 | `--headed` | off | Show browser (debug) |
 | `--help` | | Full option list |
 
@@ -132,7 +136,7 @@ Schema: [`references/hfviewer-output.schema.json`](./skills/hf-model-architectur
 | Browser launch fails | `npx playwright install chromium` |
 | `hfviewer only exposes levels 0-N` | Lower `--level` |
 | Gated / private model | Not supported by hfviewer |
-| Timeout / processing dialog | Increase `--timeout` (seconds); open the hfviewer URL manually — the model may not be indexed yet |
+| Timeout / processing dialog | Increase `--timeout` (seconds), e.g. `--timeout 300`. If hfviewer shows a **Processing model** email dialog, it is still rendering in the background — Layerdex does not submit email; wait longer or open the hfviewer URL manually — the model may not be indexed yet |
 | `exportMethod: element-screenshot` | Non-fatal; PNG is still valid |
 
 ## Project structure
