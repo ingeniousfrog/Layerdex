@@ -1,3 +1,7 @@
 node_modules/
 artifacts/
 .DS_Store
+
+# hfviewer capture outputs
+*__*-level*-structure.png
+*__*-level*-info.json
