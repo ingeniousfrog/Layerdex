@@ -38,10 +38,10 @@ hfviewer uses internal 0-based levels: visible `Level 4` is internal `3`.
 
 ## Automation
 
-Use the bundled script whenever filesystem access is available:
+Use the bundled script whenever filesystem access is available (run from this skill directory, or prefix `skills/hf-model-architecture/` when inside a Layerdex repo checkout):
 
 ```sh
-node skills/hf-model-architecture/scripts/capture-hfviewer.mjs zai-org/GLM-5.2 --out artifacts/glm-5.2 --level 4
+node scripts/capture-hfviewer.mjs zai-org/GLM-5.2 --out artifacts/glm-5.2 --level 4
 ```
 
 Useful options:
@@ -62,7 +62,7 @@ If Playwright is missing, install project dependencies before running the script
 User: "Capture a Level 4 architecture graph for zai-org/GLM-5.2."
 
 ```sh
-node skills/hf-model-architecture/scripts/capture-hfviewer.mjs zai-org/GLM-5.2 --out artifacts/glm-5.2 --level 4
+node scripts/capture-hfviewer.mjs zai-org/GLM-5.2 --out artifacts/glm-5.2 --level 4
 ```
 
 Expected artifacts:
@@ -75,7 +75,7 @@ Expected artifacts:
 User: "Get the structure diagram from https://hfviewer.com/black-forest-labs/FLUX.1-dev at Fine granularity."
 
 ```sh
-node skills/hf-model-architecture/scripts/capture-hfviewer.mjs https://hfviewer.com/black-forest-labs/FLUX.1-dev --out artifacts/flux --level fine
+node scripts/capture-hfviewer.mjs https://hfviewer.com/black-forest-labs/FLUX.1-dev --out artifacts/flux --level fine
 ```
 
 Expected artifacts:
@@ -88,7 +88,7 @@ Expected artifacts:
 User: "Extract architecture metadata from https://huggingface.co/meta-llama/Llama-3.1-8B."
 
 ```sh
-node skills/hf-model-architecture/scripts/capture-hfviewer.mjs https://huggingface.co/meta-llama/Llama-3.1-8B --out artifacts/llama --level 4
+node scripts/capture-hfviewer.mjs https://huggingface.co/meta-llama/Llama-3.1-8B --out artifacts/llama --level 4
 ```
 
 ## When NOT to Use

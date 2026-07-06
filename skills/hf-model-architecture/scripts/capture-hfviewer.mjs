@@ -1,6 +1,7 @@
+#!/usr/bin/env node
 import fs from "node:fs/promises";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 
 const SCHEMA_VERSION = "1.0.0";
 const DEFAULT_OPTIONS = Object.freeze({
@@ -649,7 +650,23 @@ Options:
 `);
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1] || "").href) {
+function isCliEntry() {
+  const entry = process.argv[1];
+  if (!entry) {
+    return false;
+  }
+  const modulePath = path.resolve(fileURLToPath(import.meta.url));
+  const entryPath = path.resolve(entry);
+  if (entryPath === modulePath) {
+    return true;
+  }
+  const base = path.basename(entryPath);
+  return base === "capture-hfviewer.mjs"
+    || base === "hf-model-architecture-skill"
+    || base === "capture-hf-model";
+}
+
+if (isCliEntry()) {
   main().catch((error) => {
     console.error(error instanceof Error ? error.message : error);
     process.exit(1);

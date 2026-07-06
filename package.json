@@ -1,8 +1,15 @@
 {
   "name": "layerdex",
   "version": "0.1.0",
+  "description": "Capture Hugging Face model architecture diagrams as PNG + JSON via hfviewer",
   "private": true,
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ingeniousfrog/Layerdex.git"
+  },
+  "homepage": "https://github.com/ingeniousfrog/Layerdex#readme",
+  "license": "Apache-2.0",
   "scripts": {
     "capture": "node skills/hf-model-architecture/scripts/capture-hfviewer.mjs",
     "test": "node --test skills/hf-model-architecture/test/*.test.js"
