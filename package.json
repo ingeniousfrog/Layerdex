@@ -4,7 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "python3 -m http.server 5283",
+    "capture": "node skills/hfviewer-model-structure/scripts/capture-hfviewer.mjs",
     "test": "node --test"
+  },
+  "devDependencies": {
+    "playwright": "^1.55.0"
   }
 }

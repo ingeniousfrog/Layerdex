@@ -1,0 +1,4 @@
+interface:
+  display_name: "HFViewer Model Structure"
+  short_description: "Capture hfviewer graphs and metadata"
+  default_prompt: "Use $hfviewer-model-structure to capture a Level 4 hfviewer PNG and JSON summary for zai-org/GLM-5.2."

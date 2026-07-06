@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://layerdex.local/schemas/hfviewer-output.schema.json",
+  "title": "HFViewer Model Structure Output",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "source",
+    "artifacts",
+    "model",
+    "operationTypes",
+    "sections",
+    "raw",
+    "warnings"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "1.0.0"
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "modelId",
+        "hfviewerUrl",
+        "huggingFaceUrl",
+        "capturedAt",
+        "requestedLevel",
+        "hfviewerLevel",
+        "granularityLabel"
+      ],
+      "properties": {
+        "modelId": { "type": "string", "minLength": 3 },
+        "hfviewerUrl": { "type": "string", "format": "uri" },
+        "huggingFaceUrl": { "type": "string", "format": "uri" },
+        "capturedAt": { "type": "string", "format": "date-time" },
+        "requestedLevel": { "type": ["number", "string"] },
+        "hfviewerLevel": { "type": "integer", "minimum": 0 },
+        "granularityLabel": { "type": "string", "minLength": 1 }
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["diagramPng", "infoJson"],
+      "properties": {
+        "diagramPng": { "type": "string", "minLength": 1 },
+        "infoJson": { "type": "string", "minLength": 1 },
+        "exportMethod": { "type": "string", "enum": ["hfviewer-api", "element-screenshot"] },
+        "width": { "type": "integer", "minimum": 1 },
+        "height": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "model": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title"],
+      "properties": {
+        "title": { "type": "string" },
+        "nodeCount": { "type": ["integer", "null"], "minimum": 0 },
+        "operationTypeCount": { "type": ["integer", "null"], "minimum": 0 },
+        "operationCount": { "type": ["integer", "null"], "minimum": 0 },
+        "tokenVocab": { "type": ["integer", "null"], "minimum": 0 },
+        "latency": { "type": ["string", "null"] },
+        "semanticFlow": { "type": ["string", "null"] },
+        "fidelity": { "type": ["string", "null"] },
+        "outputShape": { "type": ["string", "null"] },
+        "summaryText": { "type": ["string", "null"] },
+        "attributes": {
+          "type": "object",
+          "additionalProperties": {
+            "type": ["string", "number", "null"]
+          }
+        }
+      }
+    },
+    "operationTypes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "percent"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "percent": { "type": "number", "minimum": 0, "maximum": 100 }
+        }
+      }
+    },
+    "sections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["heading", "lines"],
+        "properties": {
+          "heading": { "type": "string" },
+          "lines": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    },
+    "raw": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["infoPanelText", "pageTitle"],
+      "properties": {
+        "infoPanelText": { "type": "string" },
+        "pageTitle": { "type": "string" },
+        "rightPanelLines": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}
